@@ -29,7 +29,8 @@ class VolumeGenerationConfig:
     - online_beta: (alpha, beta); scaled by 'online_scale_to_capacity' * min(capacities)
       so volumes are reasonable fractions of bin capacity.
     """
-    offline_uniform: Tuple[float, float] = (0.05, 0.30)
+    offline_beta: Tuple[float, float] = (1, 1)
+    offline_bounds: Tuple[float, float] = (0.05, 0.3)
     online_beta: Tuple[float, float] = (2.0, 5.0)
     online_scale_to_capacity: float = 0.9  # scale by 0.9 * min(C_i) after Beta draw
 

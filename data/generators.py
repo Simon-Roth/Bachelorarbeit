@@ -2,9 +2,9 @@
 from __future__ import annotations
 from typing import List, Tuple
 import numpy as np
-from core.config import Config
-from core.models import BinSpec, ItemSpec, Instance, Costs, FeasibleGraph
-from core.utils import validate_capacities, make_rng
+from repo_bachelorarbeit.core.config import Config
+from repo_bachelorarbeit.core.models import BinSpec, ItemSpec, Instance, Costs, FeasibleGraph
+from repo_bachelorarbeit.core.general_utils import validate_capacities, make_rng,validate_mask
 
 def generate_offline_instance(cfg: Config, seed: int) -> Instance:
     """
@@ -24,10 +24,13 @@ def generate_offline_instance(cfg: Config, seed: int) -> Instance:
     bins = [BinSpec(id=i, capacity=float(capacities[i])) for i in range(N)]
     fallback_idx = N  # IMPORTANT: 0-based indexing, fallback is the (N)-th column
 
-    # Offline volumes ~ Uniform(a, b)
-    low, high = cfg.volumes.offline_uniform
-    assert 0 < low < high, "offline_uniform must be 0 < low < high."
-    offline_volumes = rng.uniform(low, high, size=M_off).astype(float)
+    # Offline volumes ~ Beta(a, b)
+    alpha_off, beta_off = cfg.volumes.offline_beta
+    lo, hi = cfg.volumes.offline_bounds
+    assert alpha_off > 0 and beta_off > 0, "offline_beta must be positive."
+    assert 0.0 < lo < hi, "offline_bounds must satisfy 0 < lower < upper."
+    u = rng.beta(alpha_off, beta_off, size=M_off).astype(float)  # in [0,1]
+    offline_volumes = (lo + u * (hi - lo)).astype(float)
     offline_items = [ItemSpec(id=j, volume=float(offline_volumes[j])) for j in range(M_off)]
 
     # Feasibility mask for OFFLINE items: shape (M_off, N+1)
@@ -39,7 +42,9 @@ def generate_offline_instance(cfg: Config, seed: int) -> Instance:
     else:
         fallback_col = np.zeros((M_off, 1), dtype=int)
     feas_full = np.hstack([feas_mask, fallback_col])  # (M_off, N+1)
-
+    
+    validate_mask(feas_full)
+    
     # Assignment costs for OFFLINE items to all N+1 bins (fallback very large)
     c_low, c_high = cfg.costs.base_assign_range
     base_costs = rng.uniform(c_low, c_high, size=(M_off, N)).astype(float)

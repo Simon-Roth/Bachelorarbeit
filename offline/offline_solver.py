@@ -7,9 +7,9 @@ import numpy as np
 import gurobipy as gp
 from gurobipy import GRB
 
-from core.config import Config
-from core.models import Instance, AssignmentState
-
+from repo_bachelorarbeit.core.config import Config
+from repo_bachelorarbeit.core.models import Instance, AssignmentState
+from repo_bachelorarbeit.core.general_utils import effective_capacity as _effective_capacity
 
 @dataclass
 class OfflineSolutionInfo:
@@ -37,17 +37,6 @@ def _status_name(code: int) -> str:
         GRB.USER_OBJ_LIMIT:  "USER_OBJ_LIMIT",
     }.get(code, f"STATUS_{code}")
 
-
-def _effective_capacity(capacity: float, enforce_slack: bool, slack_fraction: float) -> float:
-    """
-    Slack: falls aktiviert, reduzieren wir die effektiv verfügbare Kapazität.
-    """
-    if enforce_slack:
-        assert 0.0 <= slack_fraction < 1.0, "Slack fraction must be in [0,1)."
-        return (1.0 - slack_fraction) * capacity
-    return capacity
-
-
 class OfflineMILPSolver:
     """
     Offline MILP für die initiale Zuordnung der OFFLINE-Items.
@@ -65,7 +54,7 @@ class OfflineMILPSolver:
         cfg: Config,
         *,
         time_limit: int = 60,
-        mip_gap: float = 0.01,
+        mip_gap: float = 0.00,
         threads: int = 0,
         log_to_console: bool = False,
     ) -> None:
@@ -129,7 +118,7 @@ class OfflineMILPSolver:
         m = self.model
         self.x.clear()
 
-        # Variablen nur für zulässige Kanten (spart Speicher + Constraints)
+        # Variablen nur für zulässige Kanten (weil spart Speicher + Constraints)
         for j in range(self.M):
             for i in range(self.N + 1):  # inkl. Fallback
                 if self.feas[j, i] == 1:

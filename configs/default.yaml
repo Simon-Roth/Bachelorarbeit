@@ -5,9 +5,10 @@ problem:
   fallback_is_enabled: true
 
 volumes:
-  offline_uniform: [0.05, 0.30] # prob distribution for offline item vols
-  online_beta: [2.0, 5.0] # prob distribution for online item vols (follows beta distribution)
-  online_scale_to_capacity: 0.9 # scales beta distribution to value * min(capacities)
+  offline_beta: [1.0, 1.0] # prob distribution for offline item vols
+  offline_bounds: [0.05, 0.30] # prob bounds for offline item vols 
+  online_beta: [2.0, 5.0] # prob distribution for online item vols (follows beta distribution) -> relative vols based on bin caps
+  online_scale_to_capacity: 0.9 # scales beta distribution to [0,scale] with scale = online_scale_to_capacity * min(capacities)
 
 graphs:
   p_off: 0.7 # prob that offline item can go in certain bin
@@ -39,3 +40,4 @@ slack:
 
 eval:
   seeds: [1, 2, 3]
+ 
