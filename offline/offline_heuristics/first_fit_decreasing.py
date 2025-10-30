@@ -3,8 +3,8 @@ import numpy as np
 from typing import Dict, List, Tuple
 from dataclasses import dataclass
 
-from repo_bachelorarbeit.core.models import Instance, AssignmentState
-from repo_bachelorarbeit.offline.offline_heuristics.core import HeuristicSolutionInfo
+from core.models import Instance, AssignmentState
+from offline.offline_heuristics.core import HeuristicSolutionInfo
 
 class FirstFitDecreasing:
     """First-Fit Decreasing heuristic for bin packing"""
@@ -26,7 +26,7 @@ class FirstFitDecreasing:
         assigned_bin = {}
         
         # Effective capacities with slack
-        from repo_bachelorarbeit.core.general_utils import effective_capacity
+        from core.general_utils import effective_capacity
         eff_caps = [effective_capacity(bin.capacity, self.cfg.slack.enforce_slack, 
                                      self.cfg.slack.fraction) for bin in inst.bins]
         

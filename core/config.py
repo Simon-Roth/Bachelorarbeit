@@ -13,26 +13,30 @@ class ProblemConfig:
     Core structural parameters for an instance.
     - N: number of regular bins
     - M_off: number of offline items
-    - capacities: list of bin capacities (len == N)
+    - capacities: list of bin capacities (len == N) (optional if using distribution)
+    - capacity_mean/std: parameters to synthesize capacities when list shorter than N
     - fallback_is_enabled: always True for OFFLINE items; ONLINE must NOT use fallback
     """
     N: int
     M_off: int
     capacities: List[float]
+    capacity_mean: float = 1.0
+    capacity_std: float = 0.1
     fallback_is_enabled: bool = True
 
 @dataclass
 class VolumeGenerationConfig:
     """
     Volume distributions for offline and online items.
-    - offline_uniform: (low, high) for Uniform(low, high)
-    - online_beta: (alpha, beta); scaled by 'online_scale_to_capacity' * min(capacities)
-      so volumes are reasonable fractions of bin capacity.
+    - offline_beta: Beta distribution parameters for offline item volumes.
+    - offline_bounds: lower/upper bounds applied to offline volumes.
+    - online_beta: Beta distribution parameters for online item volumes.
+    - online_bounds: lower/upper bounds applied to online volumes (independent of capacities).
     """
     offline_beta: Tuple[float, float] = (1, 1)
     offline_bounds: Tuple[float, float] = (0.05, 0.3)
     online_beta: Tuple[float, float] = (2.0, 5.0)
-    online_scale_to_capacity: float = 0.9  # scale by 0.9 * min(C_i) after Beta draw
+    online_bounds: Tuple[float, float] = (0.05, 0.3)
 
 @dataclass
 class GraphGenerationConfig:
@@ -93,6 +97,16 @@ class SlackConfig:
     fraction: float = 0.0
 
 @dataclass
+class SolverConfig:
+    """
+    Solver-specific configuration options.
+    - use_warm_start: whether to automatically generate warm start solutions
+    - warm_start_heuristic: which heuristic to use for warm start ("FFD", "BFD", "none")
+    """
+    use_warm_start: bool = False
+    warm_start_heuristic: str = "BFD"  # "FFD", "BFD", "none"
+
+@dataclass
 class EvalConfig:
     """
     Reproducibility and evaluation bookkeeping.
@@ -109,6 +123,7 @@ class Config:
     stoch: StochasticConfig
     pred: PredictionConfig
     slack: SlackConfig
+    solver: SolverConfig
     eval: EvalConfig
 
 def load_config(path: str | Path) -> Config:
@@ -124,5 +139,6 @@ def load_config(path: str | Path) -> Config:
         stoch=StochasticConfig(**data["stoch"]),
         pred=PredictionConfig(**data["pred"]),
         slack=SlackConfig(**data["slack"]),
+        solver=SolverConfig(**data.get("solver", {})),
         eval=EvalConfig(tuple(data["eval"]["seeds"])),
     )

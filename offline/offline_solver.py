@@ -1,41 +1,15 @@
-# binpacking/offline/milp_solver.py
 from __future__ import annotations
-from dataclasses import dataclass
 from typing import Dict, Tuple, Optional
 import numpy as np
 
 import gurobipy as gp
 from gurobipy import GRB
 
-from repo_bachelorarbeit.core.config import Config
-from repo_bachelorarbeit.core.models import Instance, AssignmentState
-from repo_bachelorarbeit.core.general_utils import effective_capacity as _effective_capacity
+from core.config import Config
+from core.models import Instance, AssignmentState
+from core.general_utils import effective_capacity as _effective_capacity
 
-@dataclass
-class OfflineSolutionInfo:
-    """Lightweight summary of the MILP solve for logging/eval."""
-    status: str
-    obj_value: float
-    mip_gap: float
-    runtime: float
-    assignments: np.ndarray  # shape: (M_off, N+1) binary matrix
-
-
-def _status_name(code: int) -> str:
-    """
-    Robust, versionsunabhängiger Mapper von Gurobi-Statuscodes auf Namen.
-    (Dadurch kein Zugriff auf private Attribute wie _intToStatus. -> versionsabhängig)
-    """
-    return {
-        GRB.OPTIMAL:         "OPTIMAL",
-        GRB.INFEASIBLE:      "INFEASIBLE",
-        GRB.INF_OR_UNBD:     "INF_OR_UNBD",
-        GRB.UNBOUNDED:       "UNBOUNDED",
-        GRB.TIME_LIMIT:      "TIME_LIMIT",
-        GRB.INTERRUPTED:     "INTERRUPTED",
-        GRB.SUBOPTIMAL:      "SUBOPTIMAL",
-        GRB.USER_OBJ_LIMIT:  "USER_OBJ_LIMIT",
-    }.get(code, f"STATUS_{code}")
+from offline.models import OfflineSolutionInfo, _status_name
 
 class OfflineMILPSolver:
     """
@@ -85,6 +59,11 @@ class OfflineMILPSolver:
         Modell bauen, lösen, Lösung extrahieren.
         """
         self._build_model(inst)
+        
+        # Generate warm start if not provided but config requests it
+        if warm_start is None and self.cfg.solver.use_warm_start:
+            warm_start = self._generate_warm_start(inst)
+        
         if warm_start:
             self._apply_warm_start(warm_start)
 
@@ -110,8 +89,8 @@ class OfflineMILPSolver:
 
         # Volumina und Kosten
         self.vol = np.array([it.volume for it in inst.offline_items], dtype=float)
-        self.cost = inst.costs.assign[:self.M, :self.N+1].astype(float, copy=True)
-        self.feas = inst.feasible.feasible[:self.M, :self.N+1].astype(int, copy=True)
+        self.cost = inst.costs.assign[:self.M, :self.N+1]#.astype(float, copy=True)
+        self.feas = inst.feasible.feasible[:self.M, :self.N+1]#.astype(int, copy=True)
 
         # Gurobi-Modell
         self.model = gp.Model("offline_initial_allocation")
@@ -159,6 +138,28 @@ class OfflineMILPSolver:
         m.update()
 
     # ---------- Optional warm start ----------
+
+    @staticmethod
+    def state_to_warm_start(state: AssignmentState) -> Dict[int, int]:
+        """Convert AssignmentState to warm start format for MILP."""
+        return state.assigned_bin.copy()
+
+    def _generate_warm_start(self, inst: Instance) -> Dict[int, int]:
+        """Generate warm start solution using configured heuristic."""
+        if self.cfg.solver.warm_start_heuristic == "FFD":
+            from offline.offline_heuristics.first_fit_decreasing import FirstFitDecreasing
+            heuristic = FirstFitDecreasing(self.cfg)
+        elif self.cfg.solver.warm_start_heuristic == "BFD":
+            from offline.offline_heuristics.best_fit_decreasing import BestFitDecreasing
+            heuristic = BestFitDecreasing(self.cfg)
+        elif self.cfg.solver.warm_start_heuristic == "CBFD":
+            from offline.offline_heuristics.cost_best_fit_decreasing import CostAwareBestFitDecreasing
+            heuristic = CostAwareBestFitDecreasing(self.cfg)
+        else:
+            raise ValueError(f"Unknown warm start heuristic: {self.cfg.solver.warm_start_heuristic}")
+        
+        state, _ = heuristic.solve(inst)
+        return state.assigned_bin
 
     def _apply_warm_start(self, warm_start: Dict[int, int]) -> None:
         """

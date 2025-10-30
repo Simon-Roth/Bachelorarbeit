@@ -59,18 +59,23 @@ class FeasibleGraph:
 @dataclass
 class Instance:
     """
-    Full offline instance at t=0.
+    Full offline and optional online instance at t=0.
     - bins: list of BinSpec (length N)
     - offline_items: list of ItemSpec (length M_off)
     - costs: Costs
     - feasible: FeasibleGraph for OFFLINE items (G_off)
     - fallback_bin_index: index == N (i.e., after N regular bins)
+    - online_items: List of OnlineItem (length M_on)
+    - online_feasible: Optional feasible graph for online items (fallback column MUST be 0)
     """
     bins: List[BinSpec]
     offline_items: List[ItemSpec]
     costs: Costs
     feasible: FeasibleGraph
     fallback_bin_index: int
+    online_items: List[OnlineItem] = field(default_factory=list) 
+    online_feasible: Optional[FeasibleGraph] = None
+
 
 # ---------------------------
 # Online arrivals
@@ -107,7 +112,7 @@ class AssignmentState:
 @dataclass
 class Decision:
     """
-    Bookkeeping for a single online arrival (future use).
+    Bookkeeping for a single online arrival 
     - placed_item: (item_id, bin_id_selected)
     - evicted_offline: list of (item_id, from_bin) that were evicted
     - reassignments: list of (offline_item_id, fallback_bin)

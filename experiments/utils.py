@@ -1,0 +1,137 @@
+from __future__ import annotations
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
+
+import json
+from typing import Dict, Any, List, Callable, Tuple
+from core.models import AssignmentState
+from offline.offline_solver import OfflineSolutionInfo
+from offline.offline_heuristics.core import HeuristicSolutionInfo
+from core.config import Config
+from data.generators import generate_instance_with_online
+from online.online_solver import OnlineSolver
+from online.state_utils import count_fallback_items
+
+OfflineSolverProtocol = Callable[[Config], object]
+OnlinePolicyProtocol = Callable[[Config], object]
+
+def save_results(method_name: str, state: AssignmentState, 
+                 info: OfflineSolutionInfo | HeuristicSolutionInfo,
+                 problem_config: Dict[str, int],
+                 seed: int,
+                 output_dir: str = "results") -> None:
+    """Save method results to JSON file."""
+    Path(output_dir).mkdir(exist_ok=True)
+    
+    result = {
+        'method': method_name,
+        'problem': problem_config,
+        'seed': seed,
+        'runtime': info.runtime,
+        'obj_value': info.obj_value,
+        'status': info.status if hasattr(info, 'status') else 'HEURISTIC',
+        'items_in_fallback': sum(1 for bin_id in state.assigned_bin.values() 
+                                if bin_id >= problem_config['N']),
+        'assignments': {str(k): int(v) for k, v in state.assigned_bin.items()}
+    }
+    
+    filename = f"{output_dir}/{method_name}_N{problem_config['N']}_M{problem_config['M_off']}_seed{seed}.json"
+    Path(filename).write_text(json.dumps(result, indent=2))
+    print(f"Results saved to {filename}")
+
+def load_results(results_dir: str = "results") -> list[Dict[str, Any]]:
+    """Load all result files from directory."""
+    results = []
+    for file in Path(results_dir).glob("*.json"):
+        results.append(json.loads(file.read_text()))
+    return results
+
+
+def save_combined_result(
+    filename_prefix: str,
+    result: Dict[str, Any],
+    output_dir: str = "results",
+) -> str:
+    """
+    Persist combined offline+online experiment result (single JSON structure).
+    """
+    Path(output_dir).mkdir(exist_ok=True)
+    filename = f"{output_dir}/{filename_prefix}.json"
+    Path(filename).write_text(json.dumps(result, indent=2))
+    print(f"Results saved to {filename}")
+    return filename
+
+
+def run_offline_online_pipeline(
+    cfg: Config,
+    seed: int,
+    offline_solver,
+    online_policy,
+):
+    """
+    Generate an instance with online arrivals, solve the offline phase, then run the
+    provided online policy. Returns the generated instance, the offline state, the final
+    online state, and their respective info objects.
+    """
+    instance = generate_instance_with_online(cfg, seed=seed)
+    offline_state, offline_info = offline_solver.solve(instance)
+    solver = OnlineSolver(cfg, online_policy)
+    final_state, online_info = solver.run(instance, offline_state)
+    return instance, offline_state, final_state, offline_info, online_info
+
+
+def build_pipeline_summary(
+    pipeline_name: str,
+    seed: int,
+    instance,
+    offline_state: AssignmentState,
+    final_state: AssignmentState,
+    offline_info,
+    online_info,
+    offline_method: str,
+    online_method: str,
+) -> Dict[str, Any]:
+    """
+    Assemble a JSON-safe summary for an offline+online pipeline run.
+    """
+    problem_meta = {
+        "N": len(instance.bins),
+        "M_off": len(instance.offline_items),
+        "M_on": len(instance.online_items),
+    }
+
+    offline_obj = float(offline_info.obj_value)
+    offline_status = getattr(offline_info, "status", None)
+    if offline_status is None:
+        offline_status = "FEASIBLE" if getattr(offline_info, "feasible", False) else "INFEASIBLE"
+
+    offline_result = {
+        "method": offline_method,
+        "status": offline_status,
+        "runtime": float(offline_info.runtime),
+        "obj_value": offline_obj,
+        "mip_gap": float(getattr(offline_info, "mip_gap", float("nan"))) if hasattr(offline_info, "mip_gap") else None,
+        "items_in_fallback": count_fallback_items(offline_state, instance),
+    }
+
+    online_result = {
+        "policy": online_method,
+        "status": online_info.status,
+        "runtime": float(online_info.runtime),
+        "total_cost": float(online_info.total_cost),
+        "fallback_items": online_info.fallback_items,
+        "evicted_offline": online_info.evicted_offline,
+        "total_objective": float(offline_obj + online_info.total_cost),
+    }
+
+    summary = {
+        "pipeline": pipeline_name,
+        "seed": seed,
+        "problem": problem_meta,
+        "offline": offline_result,
+        "online": online_result,
+        "final_items_in_fallback": count_fallback_items(final_state, instance),
+        "offline_assignments": {str(k): int(v) for k, v in offline_state.assigned_bin.items()},
+    }
+    return summary

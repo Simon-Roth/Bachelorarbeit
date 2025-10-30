@@ -1,21 +1,23 @@
 problem:
-  N: 5
-  M_off: 20
-  capacities: [1.0, 1.0, 1.2, 0.9, 1.1]
+  N: 50
+  M_off: 50
+  capacities: []
+  capacity_mean: 1.0
+  capacity_std: 0.1
   fallback_is_enabled: true
 
 volumes:
   offline_beta: [1.0, 1.0] # prob distribution for offline item vols
-  offline_bounds: [0.05, 0.30] # prob bounds for offline item vols 
-  online_beta: [2.0, 5.0] # prob distribution for online item vols (follows beta distribution) -> relative vols based on bin caps
-  online_scale_to_capacity: 0.9 # scales beta distribution to [0,scale] with scale = online_scale_to_capacity * min(capacities)
+  offline_bounds: [0.05, 0.7] # prob bounds for offline item vols 
+  online_beta: [2.0, 5.0] # prob distribution for online item vols (beta draw)
+  online_bounds: [0.05, 0.3] # absolute bounds for online item vols (same scale as offline)
 
 graphs:
   p_off: 0.7 # prob that offline item can go in certain bin
   p_onl: 0.5 # prob that online item can go in certain bin
 
 costs:
-  base_assign_range: [1.0, 5.0] # uniform distribution for costs for item j to bin i
+  base_assign_range: [1.0, 10.0] # uniform distribution for costs for item j to bin i
   huge_fallback: 1000000.0 # fallsback cost
   reassignment_penalty: 10.0
   penalty_mode: "per_item"     # can switch to 'per_volume' later; penalty calculation either same for items (peritem) 
@@ -24,7 +26,7 @@ costs:
 
 stoch:
   horizon_dist: "fixed" # distribution of the numnber of online items M_onl 
-  horizon: 100 # if fixed, M_onl = horizon
+  horizon: 200 # if fixed, M_onl = horizon
 
 pred:
   use_predictions: false 
@@ -37,6 +39,10 @@ slack:
   fraction: 0.0 # if enforce_slack is True -> percentage of slack reserved for online items 
   # enforce_slack: true
   # fraction: 0.05
+
+solver:
+  use_warm_start: false # if True, automatically generate warm start using heuristic
+  warm_start_heuristic: "BFD" # "FFD", "BFD", "CBFD" or "none"
 
 eval:
   seeds: [1, 2, 3]
