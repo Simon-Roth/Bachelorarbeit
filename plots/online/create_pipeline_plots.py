@@ -31,6 +31,8 @@ def load_pipeline_records() -> pd.DataFrame:
                 "fallback_offline": int(data["offline"]["items_in_fallback"]),
                 "fallback_final": int(data["final_items_in_fallback"]),
                 "seed": int(data["seed"]),
+                "status_offline": data.get("offline", {}).get("status", "UNKNOWN"),
+                "status_online": data.get("online", {}).get("status", "UNKNOWN"),
             }
         )
     return pd.DataFrame.from_records(records)
@@ -48,6 +50,8 @@ def aggregate_results(df: pd.DataFrame) -> pd.DataFrame:
             fallback_offline=("fallback_offline", "mean"),
             fallback_final=("fallback_final", "mean"),
             runs=("seed", "nunique"),
+            status_offline=("status_offline", "first"),
+            status_online=("status_online", "first"),
         )
         .reset_index()
     )
@@ -57,6 +61,9 @@ def aggregate_results(df: pd.DataFrame) -> pd.DataFrame:
 def create_plots(agg: pd.DataFrame) -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     sns.set_style("whitegrid")
+
+    good_statuses = {"COMPLETED", "OPTIMAL"}
+    infeasible_pipelines = agg.loc[~agg["status_online"].isin(good_statuses), "pipeline"].tolist()
 
     # Figure 1: Offline vs Online runtime
     runtime_df = agg[["pipeline", "runtime_offline", "runtime_online"]].melt(
@@ -90,7 +97,10 @@ def create_plots(agg: pd.DataFrame) -> None:
         y="total_objective",
         palette="crest",
     )
-    ax.set_title("Total Objective (Offline + Online Cost)")
+    title = "Total Objective (Offline + Online Cost)"
+    if infeasible_pipelines:
+        title += f"  (Infeasible: {', '.join(infeasible_pipelines)})"
+    ax.set_title(title)
     ax.set_xlabel("Pipeline")
     ax.set_ylabel("Objective Value")
     plt.xticks(rotation=25)

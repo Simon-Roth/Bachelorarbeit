@@ -17,7 +17,8 @@ graphs:
   p_onl: 0.5 # prob that online item can go in certain bin
 
 costs:
-  base_assign_range: [1.0, 10.0] # uniform distribution for costs for item j to bin i
+  assign_beta: [2.0, 5.0] # beta distribution for assignment costs
+  assign_bounds: [1.0, 10.0] # lower/upper bounds for assignment costs  
   huge_fallback: 1000000.0 # fallsback cost
   reassignment_penalty: 10.0
   penalty_mode: "per_item"     # can switch to 'per_volume' later; penalty calculation either same for items (peritem) 

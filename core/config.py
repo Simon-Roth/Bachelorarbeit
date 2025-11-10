@@ -52,13 +52,16 @@ class GraphGenerationConfig:
 class CostConfig:
     """
     Cost model for assignments and evictions.
-    - base_assign_range: range to sample per-item-bin assignment costs
+    - assign_beta: Beta distribution parameters for assignment costs
+    - assign_bounds: lower/upper bounds applied to assignment costs
     - huge_fallback: large fallback cost to ensure feasibility but discourage use
     - reassignment_penalty: base penalty for evicting an OFFLINE item (per default PER-ITEM)
     - penalty_mode: 'per_item' | 'per_volume'  (we default to per_item but can switch later)
     - per_volume_scale: if penalty_mode == 'per_volume', use penalty = per_volume_scale * volume
     """
     base_assign_range: Tuple[float, float] = (1.0, 5.0)
+    assign_beta: Tuple[float, float] = (1.0, 1.0)
+    assign_bounds: Tuple[float, float] = (1.0, 5.0)
     huge_fallback: float = 1e6
     reassignment_penalty: float = 10.0
     penalty_mode: str = "per_item"     # or "per_volume"

@@ -1,0 +1,162 @@
+# Shared defaults for the scenario grid. A runner can load this file,
+# merge the chosen overrides into the base config, and iterate each variant.
+defaults:
+  base_config: configs/default.yaml
+  pipelines:
+    - MILP+BestFit
+    - MILP+NextFit
+    - MILP+CostAwareBestFit
+    - MILP(BFD-warm)+BestFit
+    - MILP(BFD-warm)+CostAwareBestFit
+    - FFD+BestFit
+    - FFD+NextFit
+    - BFD+BestFit
+    - BFD+NextFit
+    - CostAwareBFD+CostAwareBestFit
+  seeds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+  replications: 30
+  output_dir: results/scenario_grid
+
+# Reusable override fragments (YAML anchors) to keep scenarios lean.
+profiles:
+  distributions:
+    A: &dist_A
+      volumes:
+        offline_beta: [1.0, 1.0]
+        offline_bounds: [0.05, 0.7]
+        online_beta: [2.0, 5.0]
+        online_bounds: [0.05, 0.3]
+    B: &dist_B
+      volumes:
+        offline_beta: [0.8, 3.5]
+        offline_bounds: [0.05, 0.9]
+        online_beta: [1.2, 3.0]
+        online_bounds: [0.05, 0.4]
+
+  capacity_regimes:
+    slack: &cap_slack
+      problem:
+        capacity_mean: 1.2
+        capacity_std: 0.25
+    tight: &cap_tight
+      problem:
+        capacity_mean: 0.85
+        capacity_std: 0.05
+
+  graph_densities:
+    sparse: &graph_sparse
+      graphs:
+        p_off: 0.35
+        p_onl: 0.25
+    dense: &graph_dense
+      graphs:
+        p_off: 0.9
+        p_onl: 0.75
+
+  cost_regimes:
+    high_penalty: &cost_high
+      costs:
+        assign_bounds: [4.0, 18.0]
+        reassignment_penalty: 30.0
+    baseline: &cost_baseline
+      costs:
+        assign_bounds: [1.0, 10.0]
+        reassignment_penalty: 10.0
+
+  horizons:
+    short: &horizon_short
+      stoch:
+        horizon: 80
+    long: &horizon_long
+      stoch:
+        horizon: 350
+
+# Scenario families comprise compact variants that the runner will expand.
+scenario_families:
+  - name: baseline_ab
+    description: |
+      Baseline distributions under nominal capacity and graph settings.
+      Provides a sanity check for both A and B demand profiles.
+    variants:
+      - id_suffix: baseline_A
+        overrides:
+          <<: *dist_A
+      - id_suffix: baseline_B
+        overrides:
+          <<: *dist_B
+
+  - name: capacity_regimes
+    description: |
+      Contrast slack-rich and tight-capacity instances for both distributions.
+    variants:
+      - id_suffix: slack_A
+        overrides:
+          <<: *dist_A
+          <<: *cap_slack
+      - id_suffix: slack_B
+        overrides:
+          <<: *dist_B
+          <<: *cap_slack
+      - id_suffix: tight_A
+        overrides:
+          <<: *dist_A
+          <<: *cap_tight
+      - id_suffix: tight_B
+        overrides:
+          <<: *dist_B
+          <<: *cap_tight
+
+  - name: graph_sparsity
+    description: |
+      Sweep feasibility density to test heuristic robustness when fewer bins are available.
+    variants:
+      - id_suffix: sparse_A
+        overrides:
+          <<: *dist_A
+          <<: *graph_sparse
+      - id_suffix: sparse_B
+        overrides:
+          <<: *dist_B
+          <<: *graph_sparse
+      - id_suffix: dense_A
+        overrides:
+          <<: *dist_A
+          <<: *graph_dense
+      - id_suffix: dense_B
+        overrides:
+          <<: *dist_B
+          <<: *graph_dense
+
+  - name: cost_shift
+    description: |
+      Explore higher assignment and eviction penalties, highlighting cost-aware heuristics.
+    variants:
+      - id_suffix: high_penalty_A
+        overrides:
+          <<: *dist_A
+          <<: *cost_high
+      - id_suffix: high_penalty_B
+        overrides:
+          <<: *dist_B
+          <<: *cost_high
+
+  - name: horizon_stress
+    description: |
+      Compare shorter versus longer online horizons for both distributions.
+    variants:
+      - id_suffix: short_A
+        overrides:
+          <<: *dist_A
+          <<: *horizon_short
+      - id_suffix: short_B
+        overrides:
+          <<: *dist_B
+          <<: *horizon_short
+      - id_suffix: long_A
+        overrides:
+          <<: *dist_A
+          <<: *horizon_long
+      - id_suffix: long_B
+        overrides:
+          <<: *dist_B
+          <<: *horizon_long

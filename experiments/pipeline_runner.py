@@ -66,7 +66,7 @@ def run_pipeline(
     Returns
     -------
     summary, path:
-        The JSON-friendly summary dictionary and the file path it was written to.
+        JSON-friendly summary dictionary and the file path it was written to.
     """
     chosen_seed = cfg.eval.seeds[0] if seed is None else seed
 

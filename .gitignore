@@ -6,3 +6,6 @@ results/*.pdf
 results/*.png
 plots/online/results/*.pdf
 plots/online/results/*.png
+plots/scenario/results/*.pdf
+plots/scenario/results/*.png
+results

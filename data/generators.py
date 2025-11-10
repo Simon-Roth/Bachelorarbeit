@@ -6,6 +6,25 @@ from core.config import Config
 from core.models import BinSpec, ItemSpec, Instance, Costs, FeasibleGraph, OnlineItem
 from core.general_utils import validate_capacities, make_rng, validate_mask
 
+
+def _sample_assignment_costs(
+    cfg: Config,
+    rng: np.random.Generator,
+    rows: int,
+    cols: int,
+) -> np.ndarray:
+    """
+    Sample assignment costs using the configured beta distribution and bounds.
+    """
+    if rows <= 0 or cols <= 0:
+        return np.empty((rows, cols), dtype=float)
+    alpha_cost, beta_cost = cfg.costs.assign_beta
+    lo_cost, hi_cost = cfg.costs.assign_bounds
+    assert alpha_cost > 0 and beta_cost > 0, "assign_beta must be positive."
+    assert lo_cost < hi_cost, "assign_bounds must satisfy lower < upper."
+    draws = rng.beta(alpha_cost, beta_cost, size=(rows, cols)).astype(float)
+    return (lo_cost + draws * (hi_cost - lo_cost)).astype(float)
+
 def generate_offline_instance(cfg: Config, seed: int) -> Instance:
     """
     Create an offline instance at t=0:
@@ -37,11 +56,11 @@ def generate_offline_instance(cfg: Config, seed: int) -> Instance:
     fallback_idx = N  # IMPORTANT: 0-based indexing, fallback is the (N)-th column
 
     # Offline volumes ~ Beta(a, b)
-    alpha_off, beta_off = cfg.volumes.offline_beta
+    alpha_vol_off, beta_vol_off = cfg.volumes.offline_beta
     lo, hi = cfg.volumes.offline_bounds
-    assert alpha_off > 0 and beta_off > 0, "offline_beta must be positive."
+    assert alpha_vol_off > 0 and beta_vol_off > 0, "offline_beta must be positive."
     assert 0.0 < lo < hi, "offline_bounds must satisfy 0 < lower < upper."
-    u = rng.beta(alpha_off, beta_off, size=M_off).astype(float)  # in [0,1]
+    u = rng.beta(alpha_vol_off, beta_vol_off, size=M_off).astype(float)  # in [0,1]
     offline_volumes = (lo + u * (hi - lo)).astype(float)
     offline_items = [ItemSpec(id=j, volume=float(offline_volumes[j])) for j in range(M_off)]
 
@@ -58,8 +77,7 @@ def generate_offline_instance(cfg: Config, seed: int) -> Instance:
     validate_mask(feas_full)
     
     # Assignment costs for OFFLINE items to all N+1 bins (fallback very large)
-    c_low, c_high = cfg.costs.base_assign_range
-    base_costs = rng.uniform(c_low, c_high, size=(M_off, N)).astype(float)
+    base_costs = _sample_assignment_costs(cfg, rng, M_off, N)
     fallback_costs = np.full((M_off, 1), cfg.costs.huge_fallback, dtype=float)
     assign = np.hstack([base_costs, fallback_costs])
 
@@ -86,11 +104,11 @@ def _sample_online_volumes(cfg: Config, rng: np.random.Generator, count: int) ->
     Draw 'count' online item volumes using the configured beta distribution
     and absolute bounds.
     """
-    alpha, beta = cfg.volumes.online_beta
+    alpha_vol_onl, beta_vol_onl = cfg.volumes.online_beta
     lo, hi = cfg.volumes.online_bounds
-    assert alpha > 0 and beta > 0, "online_beta must be positive."
+    assert alpha_vol_onl > 0 and beta_vol_onl > 0, "online_beta must be positive."
     assert 0.0 < lo < hi, "online_bounds must satisfy 0 < lower < upper."
-    draws = rng.beta(alpha, beta, size=count).astype(float)
+    draws = rng.beta(alpha_vol_onl, beta_vol_onl, size=count).astype(float)
     return lo + draws * (hi - lo)
 
 def _ensure_row_feasible(mask: np.ndarray, rng: np.random.Generator) -> None:
@@ -137,9 +155,8 @@ def generate_online_sequence(
     first_id = cfg.problem.M_off if start_id is None else start_id
 
     online_items: List[OnlineItem] = []
-    c_low, c_high = cfg.costs.base_assign_range
     if M_on > 0:
-        base_costs = rng.uniform(c_low, c_high, size=(M_on, N)).astype(float)
+        base_costs = _sample_assignment_costs(cfg, rng, M_on, N)
         fallback_costs = np.full((M_on, 1), cfg.costs.huge_fallback, dtype=float)
         assign = np.hstack([base_costs, fallback_costs])
     else:
