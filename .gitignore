@@ -8,4 +8,6 @@ plots/online/results/*.pdf
 plots/online/results/*.png
 plots/scenario/results/*.pdf
 plots/scenario/results/*.png
+plots/online/config_sweep/
+plots/online/results/
 results

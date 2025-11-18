@@ -57,13 +57,14 @@ def main() -> None:
                 offline_state, offline_info = solver.solve(copy.deepcopy(shared_instance))
                 cached_solution = (offline_state, offline_info)
                 offline_cache[spec.offline_label] = cached_solution
-                save_cached_offline_solution(
-                    config_sig,
-                    base_seed,
-                    spec.offline_label,
-                    offline_state,
-                    offline_info,
-                )
+                if isinstance(offline_info, OfflineSolutionInfo):
+                    save_cached_offline_solution(
+                        config_sig,
+                        base_seed,
+                        spec.offline_label,
+                        offline_state,
+                        offline_info,
+                    )
 
         print(f"\n{'=' * 60}")
         print(f"Running {spec.name}")
@@ -104,7 +105,7 @@ def compute_full_horizon_baseline(base_seed, config_sig):
         optimal_state, optimal_info = solve_full_horizon_optimum(
             cfg_opt,
             copy.deepcopy(base_instance),
-            lambda cfg_: OfflineMILPSolver(cfg_, time_limit=300, mip_gap=0.0, threads=0, log_to_console=False),
+            lambda cfg_: OfflineMILPSolver(cfg_, time_limit=300, mip_gap=0.0, log_to_console=False),
         )
         save_cached_full_horizon(config_sig, base_seed, optimal_state, optimal_info)
     optimal_fallback = count_fallback_items(optimal_state, base_instance)
