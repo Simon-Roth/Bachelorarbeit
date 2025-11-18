@@ -28,6 +28,8 @@ def validate_capacities(capacities: Sequence[float]) -> None:
 
 def validate_mask(mask: np.ndarray) -> None:
     assert mask.dtype == np.int_ or mask.dtype == np.bool_, "Feasibility mask must be int/bool."
+    if mask.size == 0:
+        return
     assert mask.min() >= 0 and mask.max() <= 1, "Feasibility mask must be 0/1."
 
 def effective_capacity(capacity: float, enforce_slack: bool, slack_fraction: float) -> float:

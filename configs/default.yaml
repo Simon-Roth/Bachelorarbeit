@@ -1,25 +1,25 @@
 problem:
-  N: 50
-  M_off: 50
+  N: 10
+  M_off: 240
   capacities: []
-  capacity_mean: 1.0
+  capacity_mean: 30.0
   capacity_std: 0.1
   fallback_is_enabled: true
 
 volumes:
-  offline_beta: [1.0, 1.0] # prob distribution for offline item vols
-  offline_bounds: [0.05, 0.7] # prob bounds for offline item vols 
+  offline_beta: [2.0, 4.5] # prob distribution for offline item vols
+  offline_bounds: [0.5, 3] # prob bounds for offline item vols 
   online_beta: [2.0, 5.0] # prob distribution for online item vols (beta draw)
-  online_bounds: [0.05, 0.3] # absolute bounds for online item vols (same scale as offline)
+  online_bounds: [0.3, 2.1] # absolute bounds for online item vols (same scale as offline)
 
 graphs:
-  p_off: 0.7 # prob that offline item can go in certain bin
+  p_off: 0.8 # prob that offline item can go in certain bin
   p_onl: 0.5 # prob that online item can go in certain bin
 
 costs:
   assign_beta: [2.0, 5.0] # beta distribution for assignment costs
-  assign_bounds: [1.0, 10.0] # lower/upper bounds for assignment costs  
-  huge_fallback: 1000000.0 # fallsback cost
+  assign_bounds: [1.0, 5.0] # lower/upper bounds for assignment costs  
+  huge_fallback: 50.0 # fallsback cost
   reassignment_penalty: 10.0
   penalty_mode: "per_item"     # can switch to 'per_volume' later; penalty calculation either same for items (peritem) 
   # or dependent on volume
@@ -27,7 +27,7 @@ costs:
 
 stoch:
   horizon_dist: "fixed" # distribution of the numnber of online items M_onl 
-  horizon: 200 # if fixed, M_onl = horizon
+  horizon: 60 # if fixed, M_onl = horizon
 
 pred:
   use_predictions: false 
@@ -36,8 +36,9 @@ pred:
   trust_lambda: 0.9
 
 slack:
-  enforce_slack: false # if True, slack capacities reserved in items for online phase
+  enforce_slack: False # if True, slack capacities reserved in items for online phase
   fraction: 0.0 # if enforce_slack is True -> percentage of slack reserved for online items 
+  apply_to_online: true # if false, only offline stage enforces slack and online can use the buffer
   # enforce_slack: true
   # fraction: 0.05
 

@@ -4,8 +4,9 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 
 import json
-from typing import Dict, Any, List, Callable, Tuple
-from core.models import AssignmentState
+from typing import Dict, Any, List, Callable, Tuple, Optional
+import numpy as np
+from core.models import AssignmentState, Instance
 from offline.offline_solver import OfflineSolutionInfo
 from offline.offline_heuristics.core import HeuristicSolutionInfo
 from core.config import Config
@@ -48,6 +49,25 @@ def load_results(results_dir: str = "results") -> list[Dict[str, Any]]:
     return results
 
 
+def build_empty_offline_solution(instance: Instance) -> Tuple[AssignmentState, OfflineSolutionInfo]:
+    """
+    Return a zero-load assignment state and stub OfflineSolutionInfo when no offline items exist.
+    """
+    fallback_dim = instance.fallback_bin_index + 1
+    state = AssignmentState(
+        load=np.zeros(fallback_dim, dtype=float),
+        assigned_bin={},
+    )
+    info = OfflineSolutionInfo(
+        status="NO_OFFLINE_ITEMS",
+        obj_value=0.0,
+        mip_gap=0.0,
+        runtime=0.0,
+        assignments=np.zeros((0, fallback_dim), dtype=int),
+    )
+    return state, info
+
+
 def save_combined_result(
     filename_prefix: str,
     result: Dict[str, Any],
@@ -68,14 +88,21 @@ def run_offline_online_pipeline(
     seed: int,
     offline_solver,
     online_policy,
+    *,
+    instance: Optional[Instance] = None,
 ):
     """
     Generate an instance with online arrivals, solve the offline phase, then run the
     provided online policy. Returns the generated instance, the offline state, the final
     online state, and their respective info objects.
     """
-    instance = generate_instance_with_online(cfg, seed=seed)
-    offline_state, offline_info = offline_solver.solve(instance)
+    if instance is None:
+        instance = generate_instance_with_online(cfg, seed=seed)
+
+    if len(instance.offline_items) == 0:
+        offline_state, offline_info = build_empty_offline_solution(instance)
+    else:
+        offline_state, offline_info = offline_solver.solve(instance)
     solver = OnlineSolver(cfg, online_policy)
     final_state, online_info = solver.run(instance, offline_state)
     return instance, offline_state, final_state, offline_info, online_info

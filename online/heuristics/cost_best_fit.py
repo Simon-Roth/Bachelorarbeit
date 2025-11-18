@@ -18,7 +18,7 @@ from online.state_utils import (
 
 class CostAwareBestFitOnlinePolicy(BaseOnlinePolicy):
     """
-    Selects the feasible bin that minimises incremental cost (assignment plus eviction
+    Selects the feasible bin that minimises incremental cost (assignment plus potential eviction
     penalties). Uses residual capacity as a tie-breaker to avoid fragmentation.
     """
 

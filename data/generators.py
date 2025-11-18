@@ -185,6 +185,8 @@ def generate_instance_with_online(
     Convenience wrapper that augments an offline instance with generated online arrivals.
     """
     inst = generate_offline_instance(cfg, seed)
+    M_off = cfg.problem.M_off
+ 
     on_seed = seed if online_seed is None else online_seed
     online_items, online_feasible, online_costs = generate_online_sequence(
         cfg,

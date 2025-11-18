@@ -23,7 +23,8 @@ def build_context(cfg: Config, instance: Instance, state: AssignmentState) -> Pl
     """Create a placement context snapshot from the live state."""
     loads = state.load.copy()
     assignments = dict(state.assigned_bin)
-    effective_caps = np.asarray(effective_capacities(instance, cfg))
+    use_slack = cfg.slack.enforce_slack and getattr(cfg.slack, "apply_to_online", True)
+    effective_caps = np.asarray(effective_capacities(instance, cfg, use_slack=use_slack))
     offline_vols = offline_volumes(instance)
     return PlacementContext(
         cfg=cfg,
@@ -169,10 +170,18 @@ def count_fallback_items(state: AssignmentState, instance: Instance) -> int:
     )
 
 
-def effective_capacities(instance: Instance, cfg: Config) -> List[float]:
-    """Effective capacities for each regular bin, respecting global slack settings."""
-    enforce_slack = cfg.slack.enforce_slack
-    slack_fraction = cfg.slack.fraction
+def effective_capacities(
+    instance: Instance,
+    cfg: Config,
+    *,
+    use_slack: Optional[bool] = None,
+) -> List[float]:
+    """Effective capacities for each regular bin, with optional slack override."""
+    if use_slack is None:
+        enforce_slack = cfg.slack.enforce_slack
+    else:
+        enforce_slack = use_slack
+    slack_fraction = cfg.slack.fraction if enforce_slack else 0.0
     return [
         effective_capacity(bin_spec.capacity, enforce_slack, slack_fraction)
         for bin_spec in instance.bins

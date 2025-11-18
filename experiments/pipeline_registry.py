@@ -13,6 +13,7 @@ from offline.offline_heuristics.cost_best_fit_decreasing import CostAwareBestFit
 from online.heuristics.best_fit import BestFitOnlinePolicy
 from online.heuristics.next_fit import NextFitOnlinePolicy
 from online.heuristics.cost_best_fit import CostAwareBestFitOnlinePolicy
+from online.policies.primal_dual import BalancedPricePolicy
 
 
 def make_milp_solver(
@@ -66,6 +67,11 @@ def make_warm_milp_solver(
     return factory
 
 
+def make_balanced_price_policy(cfg: Config):
+    return BalancedPricePolicy(cfg)  # reads prices from results/balanced_prices.json
+
+
+
 PIPELINES: List[PipelineSpec] = [
     PipelineSpec(
         name="MILP+BestFit",
@@ -74,13 +80,13 @@ PIPELINES: List[PipelineSpec] = [
         offline_factory=make_milp_solver(),
         online_factory=lambda cfg: BestFitOnlinePolicy(cfg),
     ),
-    PipelineSpec(
-        name="MILP+NextFit",
-        offline_label="MILP",
-        online_label="NextFit",
-        offline_factory=make_milp_solver(),
-        online_factory=lambda cfg: NextFitOnlinePolicy(cfg),
-    ),
+    # PipelineSpec(
+    #     name="MILP+NextFit",
+    #     offline_label="MILP",
+    #     online_label="NextFit",
+    #     offline_factory=make_milp_solver(),
+    #     online_factory=lambda cfg: NextFitOnlinePolicy(cfg),
+    # ),
     PipelineSpec(
         name="MILP+CostAwareBestFit",
         offline_label="MILP",
@@ -109,13 +115,13 @@ PIPELINES: List[PipelineSpec] = [
         offline_factory=lambda cfg: FirstFitDecreasing(cfg),
         online_factory=lambda cfg: BestFitOnlinePolicy(cfg),
     ),
-    PipelineSpec(
-        name="FFD+NextFit",
-        offline_label="FFD",
-        online_label="NextFit",
-        offline_factory=lambda cfg: FirstFitDecreasing(cfg),
-        online_factory=lambda cfg: NextFitOnlinePolicy(cfg),
-    ),
+    # PipelineSpec(
+    #     name="FFD+NextFit",
+    #     offline_label="FFD",
+    #     online_label="NextFit",
+    #     offline_factory=lambda cfg: FirstFitDecreasing(cfg),
+    #     online_factory=lambda cfg: NextFitOnlinePolicy(cfg),
+    # ),
     PipelineSpec(
         name="BFD+BestFit",
         offline_label="BFD",
@@ -123,13 +129,13 @@ PIPELINES: List[PipelineSpec] = [
         offline_factory=lambda cfg: BestFitDecreasing(cfg),
         online_factory=lambda cfg: BestFitOnlinePolicy(cfg),
     ),
-    PipelineSpec(
-        name="BFD+NextFit",
-        offline_label="BFD",
-        online_label="NextFit",
-        offline_factory=lambda cfg: BestFitDecreasing(cfg),
-        online_factory=lambda cfg: NextFitOnlinePolicy(cfg),
-    ),
+    # PipelineSpec(
+    #     name="BFD+NextFit",
+    #     offline_label="BFD",
+    #     online_label="NextFit",
+    #     offline_factory=lambda cfg: BestFitDecreasing(cfg),
+    #     online_factory=lambda cfg: NextFitOnlinePolicy(cfg),
+    # ),
     PipelineSpec(
         name="CostAwareBFD+CostAwareBestFit",
         offline_label="CostAwareBFD",
@@ -144,6 +150,14 @@ PIPELINES: List[PipelineSpec] = [
         offline_factory=make_warm_milp_solver(BestFitDecreasing),
         online_factory=lambda cfg: CostAwareBestFitOnlinePolicy(cfg),
     ),
+#     PipelineSpec(
+#     name="MILP+BalancedPrice",
+#     offline_label="MILP",
+#     online_label="BalancedPrice",
+#     offline_factory=make_milp_solver(),
+#     online_factory=lambda cfg: BalancedPricePolicy(cfg),
+# )
+
 ]
 
 PIPELINE_REGISTRY: Dict[str, PipelineSpec] = {spec.name: spec for spec in PIPELINES}

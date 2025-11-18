@@ -95,9 +95,12 @@ class SlackConfig:
     Slack control (even if default is 'no slack') so we can switch later without refactors.
     - enforce_slack: if True, enforce a global fraction of capacity to remain unused
     - fraction: fraction in [0,1); effective capacity is (1 - fraction) * C_i
+    - apply_to_online: if False, only the offline stage honors slack and the online stage
+      sees full physical capacities.
     """
     enforce_slack: bool = False
     fraction: float = 0.0
+    apply_to_online: bool = True
 
 @dataclass
 class SolverConfig:

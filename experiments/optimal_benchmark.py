@@ -23,6 +23,7 @@ def build_full_horizon_instance(instance: Instance) -> Instance:
     Online items are converted into ItemSpec and their feasibility matrix rows
     appended with fallback column set to zero.
     """
+        
     offline_specs = [ItemSpec(id=item.id, volume=item.volume) for item in instance.offline_items]
     online_specs = [ItemSpec(id=item.id, volume=item.volume) for item in instance.online_items]
     all_items = offline_specs + online_specs
