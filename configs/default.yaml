@@ -36,15 +36,15 @@ pred:
   trust_lambda: 0.9
 
 slack:
-  enforce_slack: False # if True, slack capacities reserved in items for online phase
-  fraction: 0.0 # if enforce_slack is True -> percentage of slack reserved for online items 
-  apply_to_online: true # if false, only offline stage enforces slack and online can use the buffer
+  enforce_slack: true # if True, slack capacities reserved in items for online phase
+  fraction: 0.3 # if enforce_slack is True -> percentage of slack reserved for online items 
+  apply_to_online: false # if false, only offline stage enforces slack and online can use the buffer
   # enforce_slack: true
   # fraction: 0.05
 
 solver:
-  use_warm_start: false # if True, automatically generate warm start using heuristic
-  warm_start_heuristic: "BFD" # "FFD", "BFD", "CBFD" or "none"
+  use_warm_start: True # if True, automatically generate warm start using heuristic
+  warm_start_heuristic: "CBFD" # "FFD", "BFD", "CBFD" or "none"
 
 eval:
   seeds: [1, 2, 3]

@@ -146,19 +146,27 @@ class OfflineMILPSolver:
 
     def _generate_warm_start(self, inst: Instance) -> Dict[int, int]:
         """Generate warm start solution using configured heuristic."""
-        if self.cfg.solver.warm_start_heuristic == "FFD":
+        heuristic_name = self.cfg.solver.warm_start_heuristic
+        if heuristic_name == "FFD":
             from offline.offline_heuristics.first_fit_decreasing import FirstFitDecreasing
             heuristic = FirstFitDecreasing(self.cfg)
-        elif self.cfg.solver.warm_start_heuristic == "BFD":
+        elif heuristic_name == "BFD":
             from offline.offline_heuristics.best_fit_decreasing import BestFitDecreasing
             heuristic = BestFitDecreasing(self.cfg)
-        elif self.cfg.solver.warm_start_heuristic == "CBFD":
+        elif heuristic_name == "CBFD":
             from offline.offline_heuristics.cost_best_fit_decreasing import CostAwareBestFitDecreasing
             heuristic = CostAwareBestFitDecreasing(self.cfg)
         else:
-            raise ValueError(f"Unknown warm start heuristic: {self.cfg.solver.warm_start_heuristic}")
-        
-        state, _ = heuristic.solve(inst)
+            raise ValueError(f"Unknown warm start heuristic: {heuristic_name}")
+
+        try:
+            state, _ = heuristic.solve(inst)
+        except ValueError as exc:
+            print(
+                f"Warm start heuristic {heuristic_name} failed ({exc}); "
+                "continuing without warm start."
+            )
+            return {}
         return state.assigned_bin
 
     def _apply_warm_start(self, warm_start: Dict[int, int]) -> None:

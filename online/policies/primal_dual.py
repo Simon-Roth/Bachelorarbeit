@@ -1,7 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
 import json
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Set
 
 import numpy as np
 
@@ -19,10 +19,8 @@ class BalancedPricePolicy(BaseOnlinePolicy):
     """
     Cost-minimizing Lagrangian policy:
     - score(i) = c_{ji} + λ_i * volume_j
-    - choose feasible regular bin with minimum score
-    - if none chosen, DO NOT place to fallback explicitly
-      -> return a Decision that assigns to fallback with incremental_cost=0.0
-         so rejections can be counted later without charging costs.
+    - choose feasible regular bin with minimum score, allowing evictions if needed
+    - if none works, raise PolicyInfeasibleError so the caller can handle fallback.
     """
 
     def __init__(self, cfg: Config, price_path: Path = Path("results/balanced_prices.json")):
@@ -32,15 +30,6 @@ class BalancedPricePolicy(BaseOnlinePolicy):
         # per-regular-bin price λ_i
         self.lam: Dict[int, float] = {int(k): float(v) for k, v in data["prices"].items()}
 
-    # Stubs (won't be used because we disallow evictions below)
-    @staticmethod
-    def _no_eviction_order(_: int, __: PlacementContext) -> List[int]:
-        return []
-
-    @staticmethod
-    def _no_destination(_: int, __: int, ___: PlacementContext) -> Optional[int]:
-        return None
-
     def select_bin(
         self,
         item: OnlineItem,
@@ -49,51 +38,136 @@ class BalancedPricePolicy(BaseOnlinePolicy):
         feasible_row: Optional[np.ndarray],
     ) -> Decision:
         ctx: PlacementContext = build_context(self.cfg, instance, state)
-        regular_bins = len(instance.bins)
         fallback_idx = instance.fallback_bin_index
+        candidate_bins = self._candidate_bins(item, instance, feasible_row)
+        if not candidate_bins:
+            raise PolicyInfeasibleError(f"No feasible regular bin for online item {item.id}")
 
-        candidate_bins: set[int] = set(item.feasible_bins)
+        best_decision: Optional[Decision] = None
+        best_score = float("inf")
+
+        # First, try to place without evictions.
+        for bin_id in candidate_bins:
+            residual = ctx.effective_caps[bin_id] - (ctx.loads[bin_id] + item.volume)
+            if residual < -TOLERANCE:
+                continue
+
+            score = self._score(bin_id, item, instance)
+            if score >= best_score - 1e-12:
+                continue
+
+            decision = execute_placement(
+                bin_id,
+                item,
+                ctx,
+                eviction_order_fn=self._eviction_order_desc,
+                destination_fn=self._select_reassignment_bin,
+                allow_eviction=False,
+            )
+            if decision is not None:
+                best_score = score
+                best_decision = decision
+
+        if best_decision is not None:
+            return best_decision
+
+        # Allow evictions if no feasible bin remained.
+        for bin_id in candidate_bins:
+            score = self._score(bin_id, item, instance)
+            if score >= best_score - 1e-12:
+                continue
+            decision = execute_placement(
+                bin_id,
+                item,
+                ctx,
+                eviction_order_fn=self._eviction_order_desc,
+                destination_fn=self._select_reassignment_bin,
+                allow_eviction=True,
+            )
+            if decision is not None:
+                best_score = score
+                best_decision = decision
+
+        if best_decision is not None:
+            return best_decision
+
+        # No feasible regular bin (even with evictions) -> signal infeasibility so
+        # the caller can handle fallback placement consistently with other policies.
+        raise PolicyInfeasibleError(f"BalancedPricePolicy could not place item {item.id}")
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _candidate_bins(
+        self,
+        item: OnlineItem,
+        instance: Instance,
+        feasible_row: Optional[np.ndarray],
+    ) -> List[int]:
+        regular_bins = len(instance.bins)
+        candidate_bins: Set[int] = set(item.feasible_bins)
         if feasible_row is not None:
             for idx, allowed in enumerate(feasible_row[:regular_bins]):
                 if allowed:
                     candidate_bins.add(int(idx))
+        return sorted(b for b in candidate_bins if 0 <= b < regular_bins)
 
-        best_score = float("inf")
-        best_decision: Optional[Decision] = None
+    def _score(self, bin_id: int, item: OnlineItem, instance: Instance) -> float:
+        c_ji = float(instance.costs.assign[item.id, bin_id])
+        lam_i = self.lam.get(bin_id, 0.0)
+        return c_ji + lam_i * float(item.volume)
 
-        for i in sorted(candidate_bins):
-            if not (0 <= i < regular_bins):
+    def _eviction_order_desc(
+        self,
+        bin_id: int,
+        ctx: PlacementContext,
+    ) -> List[int]:
+        offline_ids = [
+            itm_id
+            for itm_id, assigned_bin in ctx.assignments.items()
+            if assigned_bin == bin_id and itm_id < len(ctx.instance.offline_items)
+        ]
+        offline_ids.sort(key=lambda oid: ctx.offline_volumes.get(oid, 0.0), reverse=True)
+        return offline_ids
+
+    def _select_reassignment_bin(
+        self,
+        offline_id: int,
+        origin_bin: int,
+        ctx: PlacementContext,
+    ) -> Optional[int]:
+        volume = ctx.offline_volumes.get(offline_id, 0.0)
+        instance = ctx.instance
+        feasible_row = instance.feasible.feasible[offline_id]
+        regular_bins = len(instance.bins)
+        fallback_idx = instance.fallback_bin_index
+
+        best_candidate: Optional[int] = None
+        best_cost = float("inf")
+        best_residual = float("inf")
+
+        for candidate in range(regular_bins):
+            if candidate == origin_bin or feasible_row[candidate] != 1:
                 continue
-
-            # capacity check against effective capacity
-            residual = ctx.effective_caps[i] - (ctx.loads[i] + item.volume)
-            if residual < -TOLERANCE:
+            residual = ctx.effective_caps[candidate] - (ctx.loads[candidate] + volume)
+            if residual + TOLERANCE < 0:
                 continue
+            cost = instance.costs.assign[offline_id, candidate]
+            if cost < best_cost - 1e-9 or (
+                abs(cost - best_cost) <= 1e-9 and residual < best_residual
+            ):
+                best_cost = cost
+                best_residual = residual
+                best_candidate = candidate
 
-            c_ji = float(instance.costs.assign[item.id, i])
-            lam_i = self.lam.get(i, 0.0)
-            score = c_ji + lam_i * float(item.volume)
+        if best_candidate is not None:
+            return best_candidate
 
-            if score < best_score - 1e-12:
-                decision = execute_placement(
-                    i,
-                    item,
-                    ctx,
-                    eviction_order_fn=self._no_eviction_order,
-                    destination_fn=self._no_destination,
-                    allow_eviction=False,
-                )
-                if decision is not None:
-                    best_score = score
-                    best_decision = decision
-
-        if best_decision is not None:
-            return best_decision  # already a full Decision with proper incremental_cost
-
-        # No regular bin selected -> place into fallback *without cost*.
-        return Decision(
-            placed_item=(item.id, fallback_idx),
-            evicted_offline=[],
-            reassignments=[],
-            incremental_cost=0.0,   # <-- intermediate fix: do not charge for fallback
-        )
+        if (
+            self.cfg.problem.fallback_is_enabled
+            and fallback_idx < feasible_row.shape[0]
+            and feasible_row[fallback_idx] == 1
+        ):
+            return fallback_idx
+        return None

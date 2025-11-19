@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, Tuple, Union
+from typing import Dict, Tuple
 from pathlib import Path
 
 from core.config import load_config
@@ -18,12 +18,12 @@ from offline.models import OfflineSolutionInfo
 from offline.offline_heuristics.core import HeuristicSolutionInfo
 from experiments.offline_cache import (
     compute_config_signature,
-    load_cached_offline_solution,
-    save_cached_offline_solution,
     load_cached_full_horizon,
     save_cached_full_horizon,
 )
 import copy
+
+OfflineResult = Tuple[AssignmentState, OfflineSolutionInfo | HeuristicSolutionInfo]
 
 
 def main() -> None:
@@ -36,7 +36,6 @@ def main() -> None:
     compute_full_horizon_baseline(base_seed, config_sig)
     set_global_seed(base_seed)
     shared_instance = generate_instance_with_online(cfg, seed=base_seed)
-    OfflineResult = Tuple[AssignmentState, Union[OfflineSolutionInfo, HeuristicSolutionInfo]]
     offline_cache: Dict[str, OfflineResult] = {}
     
     print("Running offline+online pipelines ...")
@@ -45,26 +44,12 @@ def main() -> None:
         cfg_run = load_config(config_path)
         set_global_seed(base_seed)
 
-        cached_solution = None
-        if shared_instance.offline_items:
-            cached_solution = offline_cache.get(spec.offline_label)
-            if cached_solution is None:
-                cached_solution = load_cached_offline_solution(config_sig, base_seed, spec.offline_label)
-                if cached_solution is not None:
-                    offline_cache[spec.offline_label] = cached_solution
-            if cached_solution is None:
-                solver = spec.offline_factory(cfg_run)
-                offline_state, offline_info = solver.solve(copy.deepcopy(shared_instance))
-                cached_solution = (offline_state, offline_info)
-                offline_cache[spec.offline_label] = cached_solution
-                if isinstance(offline_info, OfflineSolutionInfo):
-                    save_cached_offline_solution(
-                        config_sig,
-                        base_seed,
-                        spec.offline_label,
-                        offline_state,
-                        offline_info,
-                    )
+        cached_solution: OfflineResult | None = offline_cache.get(spec.offline_label)
+        if cached_solution is None and shared_instance.offline_items:
+            solver = spec.offline_factory(cfg_run)
+            offline_state, offline_info = solver.solve(copy.deepcopy(shared_instance))
+            cached_solution = (offline_state, offline_info)
+            offline_cache[spec.offline_label] = cached_solution
 
         print(f"\n{'=' * 60}")
         print(f"Running {spec.name}")
@@ -91,6 +76,8 @@ def main() -> None:
 def compute_full_horizon_baseline(base_seed, config_sig): 
     # Compute full-horizon optimum once for reference
     cfg_opt = load_config("configs/default.yaml")
+    # cfg_opt.solver.use_warm_start = True
+    # cfg_opt.solver.warm_start_heuristic = "CBFD"
     set_global_seed(base_seed)
     base_instance = generate_instance_with_online(cfg_opt, seed=base_seed)
     offline_count = len(base_instance.offline_items)

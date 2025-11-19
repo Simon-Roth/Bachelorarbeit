@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import copy
 from dataclasses import dataclass
 from typing import Callable, Tuple
 from pathlib import Path
@@ -53,7 +54,7 @@ def build_full_horizon_instance(instance: Instance) -> Instance:
         online_feasible=None,
     )
 
-
+ 
 def solve_full_horizon_optimum(
     cfg: Config,
     base_instance: Instance,
@@ -64,5 +65,8 @@ def solve_full_horizon_optimum(
     combined instance into a single offline MILP.
     """
     full_instance = build_full_horizon_instance(base_instance)
-    solver = offline_solver_factory(cfg)
+    cfg_no_slack = copy.deepcopy(cfg)
+    cfg_no_slack.slack.enforce_slack = False
+    cfg_no_slack.slack.fraction = 0.0
+    solver = offline_solver_factory(cfg_no_slack)
     return solver.solve(full_instance)

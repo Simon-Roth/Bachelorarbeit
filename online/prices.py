@@ -39,29 +39,32 @@ def compute_balanced_prices(
     m = gp.Model("online_fractional_pricing")
     m.Params.OutputFlag = 1 if log_to_console else 0
 
-    # Variables x[j,i] for feasible regular bins
+    # Variables x[j,i] for feasible regular bins and y[j] for fallback usage
     x = {}
+    y_fallback = {}
     online_volumes = {item.id: item.volume for item in inst.online_items}
     for item in inst.online_items:
         for i in item.feasible_bins:   # regular bins only
             x[(item.id, i)] = m.addVar(lb=0.0, ub=1.0, name=f"x_{item.id}_{i}")
+        y_fallback[item.id] = m.addVar(lb=0.0, ub=1.0, name=f"y_fallback_{item.id}")
     m.update()
-
+    
     # Bin capacities (residual)
     cap_constr = {}
     for i in range(N):
         expr = gp.quicksum(online_volumes[j] * var for (j, ii), var in x.items() if ii == i)
         cap_constr[i] = m.addConstr(expr <= residual[i], name=f"cap_{i}")
 
-    # Assignment <= 1 per online item (does NOT have to be assigned (<=1)) (!!!!!!! <= oder = überlegen!!!!!!!!!!!!!!!!)
+    # Assignment equality per online item: either use regular capacity or fallback slack.
     for item in inst.online_items:
         item_vars = [var for (j, i), var in x.items() if j == item.id]
-        if item_vars:
-            expr = gp.quicksum(item_vars)
-            m.addConstr(expr == 1.0, name=f"assign_{item.id}")
+        expr = gp.quicksum(item_vars) + y_fallback[item.id]
+        m.addConstr(expr == 1.0, name=f"assign_{item.id}")
 
     # Objective: minimize ONLINE assignment cost
+    fallback_cost = cfg.costs.huge_fallback
     obj = gp.quicksum(inst.costs.assign[j, i] * var for (j, i), var in x.items())
+    obj += gp.quicksum(fallback_cost * y for y in y_fallback.values())
     m.setObjective(obj, GRB.MINIMIZE)
 
     m.optimize()

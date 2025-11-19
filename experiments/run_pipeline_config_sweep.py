@@ -12,9 +12,7 @@ The script stores each scenario in its own directory so that
 
 import argparse
 import copy
-from dataclasses import dataclass, asdict
-import hashlib
-import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
@@ -27,7 +25,6 @@ from core.models import AssignmentState
 from offline.models import OfflineSolutionInfo
 from offline.offline_heuristics.core import HeuristicSolutionInfo
 from experiments.optimal_benchmark import solve_full_horizon_optimum
-from experiments.offline_cache import load_cached_full_horizon, save_cached_full_horizon
 from experiments.utils import save_combined_result
 from offline.offline_solver import OfflineMILPSolver
 from online.state_utils import count_fallback_items
@@ -64,28 +61,6 @@ def apply_config_overrides(base_cfg: Config, overrides: Dict[str, Any]) -> Confi
     _apply(cfg, overrides)
     return cfg
 
-
-def _json_safe(value):
-    if isinstance(value, dict):
-        return {k: _json_safe(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_json_safe(v) for v in value]
-    if isinstance(value, tuple):
-        return [_json_safe(v) for v in value]
-    return value
-
-
-def compute_scenario_signature(cfg: Config, scenario_name: str) -> str:
-    """
-    Generate a stable signature for a scenario configuration to reuse cached baselines.
-    """
-    cfg_dict = _json_safe(asdict(cfg))
-    payload = json.dumps(
-        {"scenario": scenario_name, "config": cfg_dict},
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    return hashlib.sha256(payload.encode()).hexdigest()
 
 
 SCENARIO_SWEEP: List[ScenarioConfig] = [
@@ -189,7 +164,6 @@ def run_config_sweep(
         if scenario.seeds:
             scenario_cfg.eval = copy.deepcopy(scenario_cfg.eval)
             scenario_cfg.eval.seeds = tuple(scenario.seeds)
-        scenario_sig = compute_scenario_signature(scenario_cfg, scenario.name)
 
         seeds = list(scenario_cfg.eval.seeds)
         scenario_dir = output_root / scenario.name
@@ -209,22 +183,17 @@ def run_config_sweep(
             online_count = len(shared_instance.online_items)
 
             if offline_count + online_count > 0:
-                cached_opt = load_cached_full_horizon(scenario_sig, seed)
-                if cached_opt is None:
-                    solver_factory = lambda cfg_: OfflineMILPSolver(
-                        cfg_,
-                        time_limit=300,
-                        mip_gap=0.01,
-                        log_to_console=False,
-                    )
-                    optimal_state, optimal_info = solve_full_horizon_optimum(
-                        scenario_cfg,
-                        copy.deepcopy(shared_instance),
-                        solver_factory,
-                    )
-                    save_cached_full_horizon(scenario_sig, seed, optimal_state, optimal_info)
-                else:
-                    optimal_state, optimal_info = cached_opt
+                solver_factory = lambda cfg_: OfflineMILPSolver(
+                    cfg_,
+                    time_limit=300,
+                    mip_gap=0.03,
+                    log_to_console=False,
+                )
+                optimal_state, optimal_info = solve_full_horizon_optimum(
+                    scenario_cfg,
+                    copy.deepcopy(shared_instance),
+                    solver_factory,
+                )
 
                 fallback_opt = count_fallback_items(optimal_state, shared_instance)
                 optimal_summary = {

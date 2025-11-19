@@ -19,7 +19,7 @@ from online.policies.primal_dual import BalancedPricePolicy
 def make_milp_solver(
     *,
     time_limit: int = 60,
-    mip_gap: float = 0.00,
+    mip_gap: float = 0.03,
     threads: int = 0,
     log_to_console: bool = False,
 ) -> Callable[[Config], OfflineMILPSolver]:
@@ -94,20 +94,20 @@ PIPELINES: List[PipelineSpec] = [
         offline_factory=make_milp_solver(),
         online_factory=lambda cfg: CostAwareBestFitOnlinePolicy(cfg),
     ),
-    PipelineSpec(
-        name="MILP(FFD-warm)+BestFit",
-        offline_label="MILP+FFD-warm",
-        online_label="BestFit",
-        offline_factory=make_warm_milp_solver(FirstFitDecreasing),
-        online_factory=lambda cfg: BestFitOnlinePolicy(cfg),
-    ),
-    PipelineSpec(
-        name="MILP(BFD-warm)+BestFit",
-        offline_label="MILP+BFD-warm",
-        online_label="BestFit",
-        offline_factory=make_warm_milp_solver(BestFitDecreasing),
-        online_factory=lambda cfg: BestFitOnlinePolicy(cfg),
-    ),
+    # PipelineSpec(
+    #     name="MILP(FFD-warm)+BestFit",
+    #     offline_label="MILP+FFD-warm",
+    #     online_label="BestFit",
+    #     offline_factory=make_warm_milp_solver(FirstFitDecreasing),
+    #     online_factory=lambda cfg: BestFitOnlinePolicy(cfg),
+    # ),
+    # PipelineSpec(
+    #     name="MILP(BFD-warm)+BestFit",
+    #     offline_label="MILP+BFD-warm",
+    #     online_label="BestFit",
+    #     offline_factory=make_warm_milp_solver(BestFitDecreasing),
+    #     online_factory=lambda cfg: BestFitOnlinePolicy(cfg),
+    # ),
     PipelineSpec(
         name="FFD+BestFit",
         offline_label="FFD",
@@ -143,20 +143,19 @@ PIPELINES: List[PipelineSpec] = [
         offline_factory=lambda cfg: CostAwareBestFitDecreasing(cfg),
         online_factory=lambda cfg: CostAwareBestFitOnlinePolicy(cfg),
     ),
+    # PipelineSpec(
+    #     name="MILP(BFD-warm)+CostAwareBestFit",
+    #     offline_label="MILP+BFD-warm",
+    #     online_label="CostAwareBestFit",
+    #     offline_factory=make_warm_milp_solver(BestFitDecreasing),
+    #     online_factory=lambda cfg: CostAwareBestFitOnlinePolicy(cfg),
     PipelineSpec(
-        name="MILP(BFD-warm)+CostAwareBestFit",
-        offline_label="MILP+BFD-warm",
-        online_label="CostAwareBestFit",
-        offline_factory=make_warm_milp_solver(BestFitDecreasing),
-        online_factory=lambda cfg: CostAwareBestFitOnlinePolicy(cfg),
-    ),
-#     PipelineSpec(
-#     name="MILP+BalancedPrice",
-#     offline_label="MILP",
-#     online_label="BalancedPrice",
-#     offline_factory=make_milp_solver(),
-#     online_factory=lambda cfg: BalancedPricePolicy(cfg),
-# )
+        name="MILP+BalancedPrice",
+        offline_label="MILP",
+        online_label="BalancedPrice",
+        offline_factory=make_milp_solver(),
+        online_factory=lambda cfg: BalancedPricePolicy(cfg),
+)
 
 ]
 
