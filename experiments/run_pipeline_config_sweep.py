@@ -64,34 +64,385 @@ def apply_config_overrides(base_cfg: Config, overrides: Dict[str, Any]) -> Confi
 
 
 SCENARIO_SWEEP: List[ScenarioConfig] = [
+    # ========= FAMILY A: SMOOTH I.I.D. DISTRIBUTION =========
     ScenarioConfig(
-        name="baseline_default",
-        overrides={},
-        description="Original config: N=10, M_off=240, horizon=60.",
-    ),
-    ScenarioConfig(
-        name="short_h40_m160",
+        name="smoothdist_ratio_off0_on100",
         overrides={
-            "problem": {"M_off": 160},
-            "stoch": {"horizon": 40},
+            "problem": {"M_off": 0},
+            "stoch": {"horizon": 300},
+            "volumes": {
+                "offline_beta":  [2.5, 5.0],
+                "offline_bounds": [0.5, 1.7],
+                "online_beta":   [2.5, 5.0],
+                "online_bounds": [0.5, 1.7],
+            },
+            "graphs": {
+                "p_off": 0.8,
+                "p_onl": 0.5,
+            },
+            "costs": {
+                "assign_beta":   [2.0, 5.0],
+                "assign_bounds": [1.0, 5.0],
+                "huge_fallback": 50.0,
+                "reassignment_penalty": 10.0,
+                "penalty_mode": "per_item",
+                "per_volume_scale": 10.0,
+            },
         },
-        description="Under-loaded online horizon with fewer offline items; tests runtime and stability.",
+        description="Smooth i.i.d. distributions, 0% offline / 100% online.",
     ),
     ScenarioConfig(
-        name="balanced_h120_m240",
+        name="smoothdist_ratio_off20_on80",
         overrides={
-            "stoch": {"horizon": 120},
+            "problem": {"M_off": 60},
+            "stoch": {"horizon": 240},
+            "volumes": {
+                "offline_beta":  [2.5, 5.0],
+                "offline_bounds": [0.5, 1.7],
+                "online_beta":   [2.5, 5.0],
+                "online_bounds": [0.5, 1.7],
+            },
+            "graphs": {
+                "p_off": 0.8,
+                "p_onl": 0.5,
+            },
+            "costs": {
+                "assign_beta":   [2.0, 5.0],
+                "assign_bounds": [1.0, 5.0],
+                "huge_fallback": 50.0,
+                "reassignment_penalty": 10.0,
+                "penalty_mode": "per_item",
+                "per_volume_scale": 10.0,
+            },
         },
-        description="Doubles the horizon while keeping offline prep size fixed.",
+        description="Smooth i.i.d. distributions, 20% offline / 80% online.",
     ),
-    # ScenarioConfig(
-    #     name="long_h200_m180",
-    #     overrides={
-    #         "problem": {"M_off": 180},
-    #         "stoch": {"horizon": 200},
-    #     },
-    #     description="Online-heavy regime with limited offline preparation (stresses fallback/evictions).",
-    # ),
+    ScenarioConfig(
+        name="smoothdist_ratio_off50_on50",
+        overrides={
+            "problem": {"M_off": 150},
+            "stoch": {"horizon": 150},
+            "volumes": {
+                "offline_beta":  [2.5, 5.0],
+                "offline_bounds": [0.5, 1.7],
+                "online_beta":   [2.5, 5.0],
+                "online_bounds": [0.5, 1.7],
+            },
+            "graphs": {
+                "p_off": 0.8,
+                "p_onl": 0.5,
+            },
+            "costs": {
+                "assign_beta":   [2.0, 5.0],
+                "assign_bounds": [1.0, 5.0],
+                "huge_fallback": 50.0,
+                "reassignment_penalty": 10.0,
+                "penalty_mode": "per_item",
+                "per_volume_scale": 10.0,
+            },
+        },
+        description="Smooth i.i.d. distributions, 50% offline / 50% online.",
+    ),
+    ScenarioConfig(
+        name="smoothdist_ratio_off80_on20",
+        overrides={
+            "problem": {"M_off": 240},
+            "stoch": {"horizon": 60},
+            "volumes": {
+                "offline_beta":  [2.5, 5.0],
+                "offline_bounds": [0.5, 1.7],
+                "online_beta":   [2.5, 5.0],
+                "online_bounds": [0.5, 1.7],
+            },
+            "graphs": {
+                "p_off": 0.8,
+                "p_onl": 0.5,
+            },
+            "costs": {
+                "assign_beta":   [2.0, 5.0],
+                "assign_bounds": [1.0, 5.0],
+                "huge_fallback": 50.0,
+                "reassignment_penalty": 10.0,
+                "penalty_mode": "per_item",
+                "per_volume_scale": 10.0,
+            },
+        },
+        description="Smooth i.i.d. distributions, 80% offline / 20% online.",
+    ),
+
+    # ========= FAMILY B: HEAVY-TAILED VOLUMES (SAME MEAN, HIGHER VARIANCE) =========
+    ScenarioConfig(
+        name="heavyvol_ratio_off0_on100",
+        overrides={
+            "problem": {"M_off": 0},
+            "stoch": {"horizon": 300},
+            "volumes": {
+                "offline_beta":  [1.0, 2.0],
+                "offline_bounds": [0.5, 1.7],
+                "online_beta":   [1.0, 2.0],
+                "online_bounds": [0.5, 1.7],
+            },
+            "graphs": {
+                "p_off": 0.8,
+                "p_onl": 0.5,
+            },
+            "costs": {
+                "assign_beta":   [2.0, 5.0],
+                "assign_bounds": [1.0, 5.0],
+                "huge_fallback": 50.0,
+                "reassignment_penalty": 10.0,
+                "penalty_mode": "per_item",
+                "per_volume_scale": 10.0,
+            },
+        },
+        description="Heavy-tailed volumes, 0% offline / 100% online.",
+    ),
+    ScenarioConfig(
+        name="heavyvol_ratio_off20_on80",
+        overrides={
+            "problem": {"M_off": 60},
+            "stoch": {"horizon": 240},
+            "volumes": {
+                "offline_beta":  [1.0, 2.0],
+                "offline_bounds": [0.5, 1.7],
+                "online_beta":   [1.0, 2.0],
+                "online_bounds": [0.5, 1.7],
+            },
+            "graphs": {
+                "p_off": 0.8,
+                "p_onl": 0.5,
+            },
+            "costs": {
+                "assign_beta":   [2.0, 5.0],
+                "assign_bounds": [1.0, 5.0],
+                "huge_fallback": 50.0,
+                "reassignment_penalty": 10.0,
+                "penalty_mode": "per_item",
+                "per_volume_scale": 10.0,
+            },
+        },
+        description="Heavy-tailed volumes, 20% offline / 80% online.",
+    ),
+    ScenarioConfig(
+        name="heavyvol_ratio_off50_on50",
+        overrides={
+            "problem": {"M_off": 150},
+            "stoch": {"horizon": 150},
+            "volumes": {
+                "offline_beta":  [1.0, 2.0],
+                "offline_bounds": [0.5, 1.7],
+                "online_beta":   [1.0, 2.0],
+                "online_bounds": [0.5, 1.7],
+            },
+            "graphs": {
+                "p_off": 0.8,
+                "p_onl": 0.5,
+            },
+            "costs": {
+                "assign_beta":   [2.0, 5.0],
+                "assign_bounds": [1.0, 5.0],
+                "huge_fallback": 50.0,
+                "reassignment_penalty": 10.0,
+                "penalty_mode": "per_item",
+                "per_volume_scale": 10.0,
+            },
+        },
+        description="Heavy-tailed volumes, 50% offline / 50% online.",
+    ),
+    ScenarioConfig(
+        name="heavyvol_ratio_off80_on20",
+        overrides={
+            "problem": {"M_off": 240},
+            "stoch": {"horizon": 60},
+            "volumes": {
+                "offline_beta":  [1.0, 2.0],
+                "offline_bounds": [0.5, 1.7],
+                "online_beta":   [1.0, 2.0],
+                "online_bounds": [0.5, 1.7],
+            },
+            "graphs": {
+                "p_off": 0.8,
+                "p_onl": 0.5,
+            },
+            "costs": {
+                "assign_beta":   [2.0, 5.0],
+                "assign_bounds": [1.0, 5.0],
+                "huge_fallback": 50.0,
+                "reassignment_penalty": 10.0,
+                "penalty_mode": "per_item",
+                "per_volume_scale": 10.0,
+            },
+        },
+        description="Heavy-tailed volumes, 80% offline / 20% online.",
+    ),
+
+    # ========= FAMILY C: SPARSE ONLINE GRAPHS =========
+    ScenarioConfig(
+        name="sparse_ratio_off0_on100",
+        overrides={
+            "problem": {"M_off": 0},
+            "stoch": {"horizon": 300},
+            "volumes": {
+                "offline_beta":  [2.5, 5.0],
+                "offline_bounds": [0.5, 1.7],
+                "online_beta":   [2.5, 5.0],
+                "online_bounds": [0.5, 1.7],
+            },
+            "graphs": {
+                "p_off": 0.8,
+                "p_onl": 0.25,
+            },
+            "costs": {
+                "assign_beta":   [2.0, 5.0],
+                "assign_bounds": [1.0, 5.0],
+                "huge_fallback": 50.0,
+                "reassignment_penalty": 10.0,
+                "penalty_mode": "per_item",
+                "per_volume_scale": 10.0,
+            },
+        },
+        description="Sparse online graphs, 0% offline / 100% online.",
+    ),
+    ScenarioConfig(
+        name="sparse_ratio_off20_on80",
+        overrides={
+            "problem": {"M_off": 60},
+            "stoch": {"horizon": 240},
+            "volumes": {
+                "offline_beta":  [2.5, 5.0],
+                "offline_bounds": [0.5, 1.7],
+                "online_beta":   [2.5, 5.0],
+                "online_bounds": [0.5, 1.7],
+            },
+            "graphs": {
+                "p_off": 0.8,
+                "p_onl": 0.25,
+            },
+            "costs": {
+                "assign_beta":   [2.0, 5.0],
+                "assign_bounds": [1.0, 5.0],
+                "huge_fallback": 50.0,
+                "reassignment_penalty": 10.0,
+                "penalty_mode": "per_item",
+                "per_volume_scale": 10.0,
+            },
+        },
+        description="Sparse online graphs, 20% offline / 80% online.",
+    ),
+    ScenarioConfig(
+        name="sparse_ratio_off50_on50",
+        overrides={
+            "problem": {"M_off": 150},
+            "stoch": {"horizon": 150},
+            "volumes": {
+                "offline_beta":  [2.5, 5.0],
+                "offline_bounds": [0.5, 1.7],
+                "online_beta":   [2.5, 5.0],
+                "online_bounds": [0.5, 1.7],
+            },
+            "graphs": {
+                "p_off": 0.8,
+                "p_onl": 0.25,
+            },
+            "costs": {
+                "assign_beta":   [2.0, 5.0],
+                "assign_bounds": [1.0, 5.0],
+                "huge_fallback": 50.0,
+                "reassignment_penalty": 10.0,
+                "penalty_mode": "per_item",
+                "per_volume_scale": 10.0,
+            },
+        },
+        description="Sparse online graphs, 50% offline / 50% online.",
+    ),
+    ScenarioConfig(
+        name="sparse_ratio_off80_on20",
+        overrides={
+            "problem": {"M_off": 240},
+            "stoch": {"horizon": 60},
+            "volumes": {
+                "offline_beta":  [2.5, 5.0],
+                "offline_bounds": [0.5, 1.7],
+                "online_beta":   [2.5, 5.0],
+                "online_bounds": [0.5, 1.7],
+            },
+            "graphs": {
+                "p_off": 0.8,
+                "p_onl": 0.25,
+            },
+            "costs": {
+                "assign_beta":   [2.0, 5.0],
+                "assign_bounds": [1.0, 5.0],
+                "huge_fallback": 50.0,
+                "reassignment_penalty": 10.0,
+                "penalty_mode": "per_item",
+                "per_volume_scale": 10.0,
+            },
+        },
+        description="Sparse online graphs, 80% offline / 20% online.",
+    ),
+
+    # ========= FAMILY D: STRUCTURAL OVERLOAD (10–20% expected overflow) =========
+
+ScenarioConfig(
+    name="overloaddist_ratio_off0_on100",
+    overrides={
+        "problem": {"M_off": 0},
+        "stoch": {"horizon": 300},
+        "volumes": {
+            "offline_beta":  [3.0, 3.0],
+            "offline_bounds": [0.5, 1.7],
+            "online_beta":   [3.0, 3.0],
+            "online_bounds": [0.5, 1.7],
+        },
+    },
+    description="Structural overload, 0% offline / 100% online.",
+),
+
+ScenarioConfig(
+    name="overloaddist_ratio_off20_on80",
+    overrides={
+        "problem": {"M_off": 60},
+        "stoch": {"horizon": 240},
+        "volumes": {
+            "offline_beta":  [3.0, 3.0],
+            "offline_bounds": [0.5, 1.7],
+            "online_beta":   [3.0, 3.0],
+            "online_bounds": [0.5, 1.7],
+        },
+    },
+    description="Structural overload, 20% offline / 80% online.",
+),
+
+ScenarioConfig(
+    name="overloaddist_ratio_off50_on50",
+    overrides={
+        "problem": {"M_off": 150},
+        "stoch": {"horizon": 150},
+        "volumes": {
+            "offline_beta":  [3.0, 3.0],
+            "offline_bounds": [0.5, 1.7],
+            "online_beta":   [3.0, 3.0],
+            "online_bounds": [0.5, 1.7],
+        },
+    },
+    description="Structural overload, 50% offline / 50% online.",
+),
+
+ScenarioConfig(
+    name="overloaddist_ratio_off80_on20",
+    overrides={
+        "problem": {"M_off": 240},
+        "stoch": {"horizon": 60},
+        "volumes": {
+            "offline_beta":  [3.0, 3.0],
+            "offline_bounds": [0.5, 1.7],
+            "online_beta":   [3.0, 3.0],
+            "online_bounds": [0.5, 1.7],
+        },
+    },
+    description="Structural overload, 80% offline / 20% online.",
+),
 ]
 
 
@@ -241,7 +592,8 @@ def run_config_sweep(
             for spec in pipeline_specs:
                 cfg_run = copy.deepcopy(scenario_cfg)
                 set_global_seed(seed)
-                cache_key = (scenario.name, seed, spec.offline_label)
+                cache_id = spec.offline_cache_key or spec.name
+                cache_key = (scenario.name, seed, cache_id)
                 cached_solution = offline_cache.get(cache_key)
                 if cached_solution is None and shared_instance.offline_items:
                     solver = spec.offline_factory(cfg_run)

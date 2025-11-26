@@ -156,6 +156,11 @@ class OfflineMILPSolver:
         elif heuristic_name == "CBFD":
             from offline.offline_heuristics.cost_best_fit_decreasing import CostAwareBestFitDecreasing
             heuristic = CostAwareBestFitDecreasing(self.cfg)
+        elif heuristic_name == "PD":
+            from offline.offline_heuristics.utilization_priced import (
+                UtilizationPricedDecreasing,
+            )
+            heuristic = UtilizationPricedDecreasing(self.cfg)
         else:
             raise ValueError(f"Unknown warm start heuristic: {heuristic_name}")
 

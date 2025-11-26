@@ -15,7 +15,7 @@ from online.state_utils import (
     TOLERANCE,
 )
 
-class BalancedPricePolicy(BaseOnlinePolicy):
+class PrimalDualPolicy(BaseOnlinePolicy):
     """
     Cost-minimizing Lagrangian policy:
     - score(i) = c_{ji} + λ_i * volume_j
@@ -23,7 +23,7 @@ class BalancedPricePolicy(BaseOnlinePolicy):
     - if none works, raise PolicyInfeasibleError so the caller can handle fallback.
     """
 
-    def __init__(self, cfg: Config, price_path: Path = Path("results/balanced_prices.json")):
+    def __init__(self, cfg: Config, price_path: Path = Path("results/primal_dual.json")):
         self.cfg = cfg
         with open(price_path) as f:
             data = json.load(f)
@@ -93,7 +93,7 @@ class BalancedPricePolicy(BaseOnlinePolicy):
 
         # No feasible regular bin (even with evictions) -> signal infeasibility so
         # the caller can handle fallback placement consistently with other policies.
-        raise PolicyInfeasibleError(f"BalancedPricePolicy could not place item {item.id}")
+        raise PolicyInfeasibleError(f"PrimalDualPolicy could not place item {item.id}")
 
     # ------------------------------------------------------------------
     # Helpers

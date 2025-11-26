@@ -92,7 +92,7 @@ def compute_full_horizon_baseline(base_seed, config_sig):
         optimal_state, optimal_info = solve_full_horizon_optimum(
             cfg_opt,
             copy.deepcopy(base_instance),
-            lambda cfg_: OfflineMILPSolver(cfg_, time_limit=300, mip_gap=0.0, log_to_console=False),
+            lambda cfg_: OfflineMILPSolver(cfg_, time_limit=300, mip_gap=0.03, log_to_console=False),
         )
         save_cached_full_horizon(config_sig, base_seed, optimal_state, optimal_info)
     optimal_fallback = count_fallback_items(optimal_state, base_instance)

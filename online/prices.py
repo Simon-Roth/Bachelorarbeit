@@ -8,7 +8,7 @@ from core.config import Config
 from core.general_utils import effective_capacity
 from core.models import AssignmentState, Instance
 
-def compute_balanced_prices(
+def compute_prices(
     cfg: Config,
     instance: Instance,
     offline_state: AssignmentState,

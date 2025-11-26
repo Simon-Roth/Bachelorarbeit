@@ -12,7 +12,7 @@ from experiments.utils import (
 )
 from pathlib import Path
 from online.online_solver import OnlineSolver
-from online.prices import compute_balanced_prices
+from online.prices import compute_prices
 from data.generators import generate_instance_with_online
 from core.models import AssignmentState, Instance
 from offline.models import OfflineSolutionInfo
@@ -46,6 +46,7 @@ class PipelineSpec:
     online_label: str
     offline_factory: OfflineFactory
     online_factory: OnlineFactory
+    offline_cache_key: str | None = None
 
 
 def run_pipeline(
@@ -98,10 +99,10 @@ def run_pipeline(
         offline_solver = spec.offline_factory(cfg)
         offline_state, offline_info = offline_solver.solve(base_instance)
 
-    prices_path = Path("results/balanced_prices.json")
-    if spec.online_label == "BalancedPrice" and online_count > 0:
+    prices_path = Path("results/primal_dual.json")
+    if spec.online_label == "PrimalDual" and online_count > 0:
         prices_path.parent.mkdir(parents=True, exist_ok=True)
-        compute_balanced_prices(cfg, base_instance, offline_state, prices_path)
+        compute_prices(cfg, base_instance, offline_state, prices_path)
 
     online_policy = spec.online_factory(cfg)
     online_solver = OnlineSolver(cfg, online_policy)
@@ -117,6 +118,7 @@ def run_pipeline(
         online_info,
         offline_method=spec.offline_label,
         online_method=spec.online_label,
+        slack_config=cfg.slack,
     )
 
     problem = summary["problem"]

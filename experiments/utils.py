@@ -9,7 +9,7 @@ import numpy as np
 from core.models import AssignmentState, Instance
 from offline.offline_solver import OfflineSolutionInfo
 from offline.offline_heuristics.core import HeuristicSolutionInfo
-from core.config import Config
+from core.config import Config, SlackConfig
 from data.generators import generate_instance_with_online
 from online.online_solver import OnlineSolver
 from online.state_utils import count_fallback_items
@@ -118,6 +118,8 @@ def build_pipeline_summary(
     online_info,
     offline_method: str,
     online_method: str,
+    *,
+    slack_config: Optional[SlackConfig] = None,
 ) -> Dict[str, Any]:
     """
     Assemble a JSON-safe summary for an offline+online pipeline run.
@@ -161,4 +163,10 @@ def build_pipeline_summary(
         "final_items_in_fallback": count_fallback_items(final_state, instance),
         "offline_assignments": {str(k): int(v) for k, v in offline_state.assigned_bin.items()},
     }
+    if slack_config is not None:
+        summary["slack"] = {
+            "enforce_slack": bool(slack_config.enforce_slack),
+            "fraction": float(slack_config.fraction),
+            "apply_to_online": bool(slack_config.apply_to_online),
+        }
     return summary

@@ -1,16 +1,16 @@
 problem:
   N: 10
-  M_off: 240
+  M_off: 60
   capacities: []
   capacity_mean: 30.0
   capacity_std: 0.1
   fallback_is_enabled: true
 
 volumes:
-  offline_beta: [2.0, 4.5] # prob distribution for offline item vols
-  offline_bounds: [0.5, 3] # prob bounds for offline item vols 
-  online_beta: [2.0, 5.0] # prob distribution for online item vols (beta draw)
-  online_bounds: [0.3, 2.1] # absolute bounds for online item vols (same scale as offline)
+  offline_beta: [2.5, 5.0] # prob distribution for offline item vols
+  offline_bounds: [0.5, 1.7] # prob bounds for offline item vols 
+  online_beta: [2.5, 5.0] # prob distribution for online item vols (beta draw)
+  online_bounds: [0.5, 1.7] # absolute bounds for online item vols (same scale as offline)
 
 graphs:
   p_off: 0.8 # prob that offline item can go in certain bin
@@ -27,7 +27,7 @@ costs:
 
 stoch:
   horizon_dist: "fixed" # distribution of the numnber of online items M_onl 
-  horizon: 60 # if fixed, M_onl = horizon
+  horizon: 240 # if fixed, M_onl = horizon
 
 pred:
   use_predictions: false 
@@ -36,15 +36,15 @@ pred:
   trust_lambda: 0.9
 
 slack:
-  enforce_slack: true # if True, slack capacities reserved in items for online phase
-  fraction: 0.3 # if enforce_slack is True -> percentage of slack reserved for online items 
+  enforce_slack: false # if True, slack capacities reserved in items for online phase
+  fraction: 0.1 # if enforce_slack is True -> percentage of slack reserved for online items 
   apply_to_online: false # if false, only offline stage enforces slack and online can use the buffer
   # enforce_slack: true
   # fraction: 0.05
 
 solver:
   use_warm_start: True # if True, automatically generate warm start using heuristic
-  warm_start_heuristic: "CBFD" # "FFD", "BFD", "CBFD" or "none"
+  warm_start_heuristic: "CBFD" # "FFD", "BFD", "CBFD", "PD" or "none"
 
 eval:
   seeds: [1, 2, 3]
