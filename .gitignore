@@ -12,3 +12,4 @@ plots/online/config_sweep/
 plots/online/slack_sweep/
 plots/online/results/
 .BAvenv/
+results/offline_cache
