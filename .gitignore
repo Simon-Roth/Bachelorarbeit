@@ -11,4 +11,4 @@ plots/scenario/results/*.png
 plots/online/config_sweep/
 plots/online/slack_sweep/
 plots/online/results/
-results
+results.BAvenv/
