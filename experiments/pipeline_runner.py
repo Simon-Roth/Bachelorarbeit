@@ -140,6 +140,7 @@ def run_pipeline(
     summary = build_pipeline_summary(
         spec.name,
         chosen_seed,
+        cfg,
         base_instance,
         offline_state,
         final_state,

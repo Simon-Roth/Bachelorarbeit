@@ -12,7 +12,7 @@ from offline.offline_heuristics.core import HeuristicSolutionInfo
 from core.config import Config, SlackConfig, DLAConfig
 from data.generators import generate_instance_with_online
 from online.online_solver import OnlineSolver
-from online.state_utils import count_fallback_items
+from online.state_utils import count_fallback_items, effective_capacities
 
 OfflineSolverProtocol = Callable[[Config], object]
 OnlinePolicyProtocol = Callable[[Config], object]
@@ -111,6 +111,7 @@ def run_offline_online_pipeline(
 def build_pipeline_summary(
     pipeline_name: str,
     seed: int,
+    cfg: Config,
     instance,
     offline_state: AssignmentState,
     final_state: AssignmentState,
@@ -130,6 +131,12 @@ def build_pipeline_summary(
         "M_off": len(instance.offline_items),
         "M_on": len(instance.online_items),
     }
+    # Residual capacity after offline phase (regular bins only), w.r.t. the effective
+    # capacities used by the offline solver (slack applied if configured).
+    eff_caps = effective_capacities(instance, cfg, use_slack=cfg.slack.enforce_slack)
+    residual_caps = [
+        max(0.0, float(cap) - float(offline_state.load[i])) for i, cap in enumerate(eff_caps)
+    ]
 
     offline_obj = float(offline_info.obj_value)
     offline_status = getattr(offline_info, "status", None)
@@ -163,6 +170,7 @@ def build_pipeline_summary(
         "online": online_result,
         "final_items_in_fallback": count_fallback_items(final_state, instance),
         "offline_assignments": {str(k): int(v) for k, v in offline_state.assigned_bin.items()},
+        "offline_residual_capacities": residual_caps,
     }
     if slack_config is not None:
         summary["slack"] = {

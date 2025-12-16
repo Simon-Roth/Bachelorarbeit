@@ -164,6 +164,7 @@ def iter_records() -> Iterable[Dict[str, Any]]:
             "runtime_total": float(data["offline"]["runtime"] + data["online"]["runtime"]),
             "objective_ratio": obj_ratio,
             "infeasible_flag": 0 if status in GOOD_STATUSES else 1,
+            "offline_residuals": data.get("offline_residual_capacities"),
         }
 
 
@@ -286,7 +287,7 @@ def plot_family(
     topk: int,
     min_feasible_runs: int,
     annotate_infeasible: bool,  # can ignore now; we plot failure rate below
-) -> None:
+    ) -> List[str]:
     family = str(df_family["family_base"].iloc[0])
     x_dim = choose_x_dimension(df_family)
     x_order = order_x(df_family, x_dim)
@@ -420,6 +421,63 @@ def plot_family(
     # Debug table
     table = df_family.sort_values([x_dim, "pipeline"])
     (OUTPUT_DIR / f"{fname}.csv").write_text(table.to_csv(index=False))
+    return pipes
+
+
+def plot_residuals_family(
+    df_family_raw: pd.DataFrame,
+    family: str,
+    pipelines: List[str],
+) -> None:
+    """
+    Plot histogram(s) of offline residual capacities pooled across variants/seeds for a family.
+    """
+    if df_family_raw.empty or not pipelines:
+        return
+
+    records = df_family_raw[df_family_raw["pipeline"].isin(pipelines)]
+    res_by_pipe: List[Tuple[str, List[float]]] = []
+    for pipe in pipelines:
+        vals: List[float] = []
+        for _, row in records[records["pipeline"] == pipe].iterrows():
+            residuals = row.get("offline_residuals")
+            if not residuals:
+                continue
+            try:
+                vals.extend(float(v) for v in residuals)
+            except Exception:
+                continue
+        if vals:
+            res_by_pipe.append((pipe, vals))
+
+    if not res_by_pipe:
+        return
+
+    n = len(res_by_pipe)
+    ncols = 3 if n >= 3 else n
+    nrows = int(math.ceil(n / ncols)) if ncols else 1
+    fig_w = max(8.0, 2.6 * ncols)
+    fig_h = max(3.0, 2.4 * nrows)
+    fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(fig_w, fig_h), squeeze=False)
+    fig.suptitle(f"Offline residual capacity – family '{family}'", y=0.98)
+
+    axes_flat = axes.flat
+    for ax, (pipe, vals) in zip(axes_flat, res_by_pipe):
+        ax.hist(vals, bins=15, color="#4C72B0", alpha=0.85)
+        ax.set_title(pipe, fontsize=9)
+        ax.set_xlabel("Residual capacity after offline")
+        ax.set_ylabel("Bin count")
+        ax.grid(True, axis="y", alpha=0.25)
+
+    for ax in list(axes_flat)[len(res_by_pipe) :]:
+        ax.axis("off")
+
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    fname = f"residuals_family_{family}".replace("/", "_")
+    fig.savefig(OUTPUT_DIR / f"{fname}.png", dpi=220, bbox_inches="tight")
+    fig.savefig(OUTPUT_DIR / f"{fname}.pdf", bbox_inches="tight")
+    plt.close(fig)
 
 
 
@@ -444,6 +502,8 @@ def main() -> None:
         print("No records after filtering.")
         return
 
+    df_raw = df.copy()
+
     # objective_ratio needs optimal baselines; warn early
     if args.metric == "objective_ratio" and df["objective_ratio"].isnull().all():
         print(
@@ -458,13 +518,17 @@ def main() -> None:
         return
 
     for fam, df_fam in agg.groupby("family_base"):
-        plot_family(
+        pipes = plot_family(
             df_fam,
             metric=args.metric,
             topk=args.topk,
             min_feasible_runs=args.min_feasible_runs,
             annotate_infeasible=args.annotate_infeasible,
         )
+        if pipes:
+            df_fam_raw = df_raw[df_raw["family_base"] == fam]
+            df_fam_raw = df_fam_raw[df_fam_raw["pipeline"].isin(pipes)]
+            plot_residuals_family(df_fam_raw, fam, pipes)
 
     print(f"Saved plots to {OUTPUT_DIR}")
 
