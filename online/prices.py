@@ -71,7 +71,7 @@ def compute_prices(
     if m.Status != GRB.OPTIMAL:
         raise RuntimeError(f"LP not optimal, status={m.Status}")
 
-    prices = {i: float(cap_constr[i].Pi) for i in range(N)}
+    prices = {i: abs(float(cap_constr[i].Pi)) for i in range(N)}
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as f:
         json.dump({"prices": prices}, f, indent=2)

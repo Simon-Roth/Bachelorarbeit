@@ -20,11 +20,7 @@ from data.generators import generate_instance_with_online
 from experiments.optimal_benchmark import solve_full_horizon_optimum
 from experiments.pipeline_registry import PIPELINE_REGISTRY, PIPELINES
 from experiments.pipeline_runner import PipelineSpec, run_pipeline
-from experiments.run_pipeline_config_sweep import (
-    ScenarioConfig,
-    apply_config_overrides,
-    select_scenarios,
-)
+from experiments.scenarios import ScenarioConfig, apply_config_overrides, select_scenarios
 from experiments.utils import save_combined_result
 from offline.models import OfflineSolutionInfo
 from offline.offline_heuristics.core import HeuristicSolutionInfo

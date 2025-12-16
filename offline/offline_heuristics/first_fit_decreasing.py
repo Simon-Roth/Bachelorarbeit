@@ -47,7 +47,11 @@ class FirstFitDecreasing:
             
             # Use fallback if enabled and no regular bin found
             if not assigned:
-                if self.cfg.problem.fallback_is_enabled:
+                fallback_idx = len(inst.bins)
+                if (
+                    self.cfg.problem.fallback_is_enabled
+                    and inst.feasible.feasible[item_idx, fallback_idx] == 1
+                ):
                     fallback_idx = len(inst.bins)
                     loads[fallback_idx] += item.volume
                     assigned_bin[item_idx] = fallback_idx

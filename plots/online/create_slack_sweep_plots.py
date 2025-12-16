@@ -18,12 +18,13 @@ import seaborn as sns
 import numpy as np
 
 from core.config import load_config
-from experiments.run_pipeline_config_sweep import apply_config_overrides, select_scenarios
+from experiments.scenarios import apply_config_overrides, select_scenarios
 
 
 RESULTS_ROOT = Path("results/slack_sweep")
 OUTPUT_DIR = Path("plots/online/slack_sweep")
 BASE_CONFIG_PATH = Path("configs/default.yaml")
+EXPORT_DPI = 180  # lower dpi to speed up rendering/saving
 SCENARIO_LABELS = {
     # Smooth i.i.d.
     "smoothdist_ratio_off0_on100":  "Smooth 0/100",
@@ -55,6 +56,15 @@ GOOD_STATUSES = {"COMPLETED", "OPTIMAL"}
 
 def _scenario_label(name: str) -> str:
     return SCENARIO_LABELS.get(name, name)
+
+
+def _scenario_family(label: str) -> str:
+    # Use the leading token ("Smooth", "HeavyVol", "Sparse", "Overload", etc.)
+    return label.split()[0] if label else "Unknown"
+
+
+def _slugify(text: str) -> str:
+    return text.replace(" ", "_").replace("/", "_").lower()
 
 
 def _parse_slack_label(name: str) -> float | None:
@@ -323,6 +333,9 @@ def _plot_line(
     ylabel: str,
     title: str,
     filename: str,
+    *,
+    sharey: bool = False,
+    baseline: float | None = None,
 ) -> None:
     if df.empty:
         return
@@ -337,10 +350,15 @@ def _plot_line(
         col_wrap=4,
         kind="line",
         marker="o",
-        facet_kws={"sharey": False},
+        facet_kws={"sharey": sharey},
     )
     g.set_axis_labels("Slack fraction", ylabel)
     g.set_titles("{col_name}")
+    if baseline is not None:
+        for ax in g.axes.flat:
+            if ax is not None:
+                ax.axhline(baseline, color="gray", linestyle="--", linewidth=1)
+
     g.fig.suptitle(title, y=1.02)
     if g._legend is not None:
         g._legend.set_bbox_to_anchor((1.02, 0.5))
@@ -348,8 +366,8 @@ def _plot_line(
         g._legend.set_title("Pipeline")
         g._legend._loc = 6  # left center
     plt.tight_layout()
-    g.savefig(OUTPUT_DIR / f"{filename}.png", dpi=300)
-    g.savefig(OUTPUT_DIR / f"{filename}.pdf", dpi=300)
+    g.savefig(OUTPUT_DIR / f"{filename}.png", dpi=EXPORT_DPI)
+    g.savefig(OUTPUT_DIR / f"{filename}.pdf", dpi=EXPORT_DPI)
     plt.close(g.fig)
 
 
@@ -433,8 +451,8 @@ def _plot_cost_composition(df: pd.DataFrame) -> None:
         grid.fig.suptitle(f"Cost Composition – {pipeline}", y=1.12)
         grid.fig.subplots_adjust(top=0.82)
         fname = f"slack_cost_composition_{pipeline.replace('+', '_').replace(' ', '_')}"
-        grid.savefig(OUTPUT_DIR / f"{fname}.png", dpi=300)
-        grid.savefig(OUTPUT_DIR / f"{fname}.pdf", dpi=300)
+        grid.savefig(OUTPUT_DIR / f"{fname}.png", dpi=EXPORT_DPI)
+        grid.savefig(OUTPUT_DIR / f"{fname}.pdf", dpi=EXPORT_DPI)
         plt.close(grid.fig)
 
 
@@ -460,6 +478,8 @@ def create_plots(aggregates: Dict[str, pd.DataFrame]) -> None:
         ylabel="Objective / Optimal",
         title="Objective vs Optimal",
         filename="slack_relative_objective",
+        sharey=True,
+        baseline=1.0,
     )
     _plot_line(
         regret_df,

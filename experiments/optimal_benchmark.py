@@ -36,6 +36,12 @@ def build_full_horizon_instance(instance: Instance) -> Instance:
     else:
         feas_full = offline_feas.copy()
 
+    # Ensure the fallback column is feasible for all items when fallback is enabled,
+    # so warm-start heuristics (e.g., CBFD) do not fail during the optimal solve.
+    fallback_idx = instance.fallback_bin_index
+    if 0 <= fallback_idx < feas_full.shape[1]:
+        feas_full[len(offline_specs) :, fallback_idx] = 1
+
     costs = Costs(
         assign=instance.costs.assign.copy(),
         reassignment_penalty=instance.costs.reassignment_penalty,

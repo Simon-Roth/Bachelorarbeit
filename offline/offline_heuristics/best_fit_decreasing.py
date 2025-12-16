@@ -48,7 +48,10 @@ class BestFitDecreasing():
             if best_bin != -1:
                 loads[best_bin] += item.volume
                 assigned_bin[item_idx] = best_bin
-            elif self.cfg.problem.fallback_is_enabled:
+            elif (
+                self.cfg.problem.fallback_is_enabled
+                and inst.feasible.feasible[item_idx, len(inst.bins)] == 1
+            ):
                 fallback_idx = len(inst.bins)
                 loads[fallback_idx] += item.volume
                 assigned_bin[item_idx] = fallback_idx

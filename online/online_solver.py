@@ -41,7 +41,7 @@ class OnlineSolver:
                 runtime=0.0,
                 total_cost=0.0,
                 fallback_items=state_utils.count_fallback_items(state_copy, instance),
-                evicted_offline=len(state_copy.offline_evicted),
+                evicted_offline=0,
                 decisions=[],
             )
             return state_copy, info
@@ -54,6 +54,7 @@ class OnlineSolver:
         volume_lookup = state_utils.build_volume_lookup(instance)
         decisions: List[Decision] = []
         total_cost = 0.0
+        eviction_events = 0
 
         start_time = time.perf_counter()
 
@@ -88,6 +89,7 @@ class OnlineSolver:
             )
             decisions.append(decision)
             total_cost += decision.incremental_cost
+            eviction_events += len(decision.evicted_offline)
 
         runtime = time.perf_counter() - start_time
 
@@ -96,7 +98,7 @@ class OnlineSolver:
             runtime=runtime,
             total_cost=total_cost,
             fallback_items=state_utils.count_fallback_items(state, instance),
-            evicted_offline=len(state.offline_evicted),
+            evicted_offline=eviction_events,
             decisions=decisions,
         )
         return state, info

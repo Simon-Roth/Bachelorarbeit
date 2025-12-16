@@ -9,7 +9,7 @@ import numpy as np
 from core.models import AssignmentState, Instance
 from offline.offline_solver import OfflineSolutionInfo
 from offline.offline_heuristics.core import HeuristicSolutionInfo
-from core.config import Config, SlackConfig
+from core.config import Config, SlackConfig, DLAConfig
 from data.generators import generate_instance_with_online
 from online.online_solver import OnlineSolver
 from online.state_utils import count_fallback_items
@@ -120,6 +120,7 @@ def build_pipeline_summary(
     online_method: str,
     *,
     slack_config: Optional[SlackConfig] = None,
+    dla_config: Optional[DLAConfig] = None,
 ) -> Dict[str, Any]:
     """
     Assemble a JSON-safe summary for an offline+online pipeline run.
@@ -168,5 +169,13 @@ def build_pipeline_summary(
             "enforce_slack": bool(slack_config.enforce_slack),
             "fraction": float(slack_config.fraction),
             "apply_to_online": bool(slack_config.apply_to_online),
+        }
+    if dla_config is not None:
+        summary["dla"] = {
+            "epsilon": float(dla_config.epsilon),
+            "log_prices": bool(dla_config.log_prices),
+            "output_dir": str(dla_config.output_dir),
+            "min_phase_len": int(dla_config.min_phase_len),
+            "use_offline_slack": bool(dla_config.use_offline_slack),
         }
     return summary

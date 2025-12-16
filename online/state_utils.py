@@ -218,6 +218,15 @@ def execute_placement(
     cfg = ctx.cfg
     fallback_idx = instance.fallback_bin_index
     regular_bins = len(instance.bins)
+    # Mutable context so destination_fn sees up-to-date loads during evictions.
+    ctx_mut = PlacementContext(
+        cfg=ctx.cfg,
+        instance=instance,
+        loads=loads,
+        assignments=assignments,
+        effective_caps=ctx.effective_caps,
+        offline_volumes=ctx.offline_volumes,
+    )
 
     evicted_pairs: List[tuple[int, int]] = []
     reassignments: List[tuple[int, int]] = []
@@ -264,7 +273,7 @@ def execute_placement(
         if origin != target_bin:
             continue
 
-        dest_bin = destination_fn(offline_id, origin, ctx)
+        dest_bin = destination_fn(offline_id, origin, ctx_mut)
         if dest_bin is None:
             continue
 
@@ -272,6 +281,10 @@ def execute_placement(
             continue
 
         volume = ctx.offline_volumes.get(offline_id, 0.0)
+        if dest_bin < regular_bins:
+            dest_cap = ctx_mut.effective_caps[dest_bin]
+            if loads[dest_bin] + volume > dest_cap + TOLERANCE:
+                continue
         loads[target_bin] -= volume
         if dest_bin == fallback_idx:
             loads[fallback_idx] += volume

@@ -42,10 +42,17 @@ slack:
   # enforce_slack: true
   # fraction: 0.05
 
+dla:
+  epsilon: 0.1           # sampling fraction controlling phase boundaries
+  log_prices: false      # if true, write per-phase price logs for plotting
+  output_dir: "results/dla"
+  min_phase_len: 1       # optional lower bound on phase length
+  use_offline_slack: true
+
 solver:
   use_warm_start: True # if True, automatically generate warm start using heuristic
   warm_start_heuristic: "CBFD" # "FFD", "BFD", "CBFD", "PD" or "none"
 
 eval:
-  seeds: [1, 2, 3]
+  seeds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
  

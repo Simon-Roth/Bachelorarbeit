@@ -24,7 +24,7 @@ class OnlineSolutionInfo:
     fallback_items:
         Number of items assigned to the fallback bin after the online phase.
     evicted_offline:
-        Number of offline items evicted during the online phase.
+        Count of offline eviction events during the online phase (penalty-bearing moves).
     decisions:
         Optional log of per-item decisions for analysis/debugging.
     """

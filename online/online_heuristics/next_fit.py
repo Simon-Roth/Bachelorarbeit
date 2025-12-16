@@ -61,32 +61,25 @@ class NextFitOnlinePolicy(BaseOnlinePolicy):
                 return decision
 
         # No bin in the window can accommodate directly; open the next feasible bin (if any).
-        candidate_after_window = [
-            bin_id for bin_id in ordered_bins if bin_id not in window
-        ]
+        candidate_after_window = [bin_id for bin_id in ordered_bins if bin_id not in window]
+        eviction_targets = candidate_after_window + window
 
-        if candidate_after_window:
-            target_bin = candidate_after_window[0]
-        else:
-            # Every feasible bin is in the window; pick the last inspected one to trigger evictions.
-            target_bin = window[-1]
-
-        decision = execute_placement(
-            target_bin,
-            item,
-            ctx,
-            eviction_order_fn=self._eviction_order_fifo,
-            destination_fn=self._choose_destination,
-            allow_eviction=True,
-        )
-
-        if decision is None:
-            raise PolicyInfeasibleError(
-                f"NextFitOnlinePolicy could not place item {item.id}"
+        for target_bin in eviction_targets:
+            decision = execute_placement(
+                target_bin,
+                item,
+                ctx,
+                eviction_order_fn=self._eviction_order_fifo,
+                destination_fn=self._choose_destination,
+                allow_eviction=True,
             )
+            if decision is not None:
+                self._last_bin = target_bin
+                return decision
 
-        self._last_bin = target_bin
-        return decision
+        raise PolicyInfeasibleError(
+            f"NextFitOnlinePolicy could not place item {item.id}"
+        )
 
     # ------------------------------------------------------------------
     # Helpers

@@ -99,12 +99,41 @@ def run_pipeline(
         offline_solver = spec.offline_factory(cfg)
         offline_state, offline_info = offline_solver.solve(base_instance)
 
-    prices_path = Path("results/primal_dual.json")
-    if spec.online_label == "PrimalDual" and online_count > 0:
-        prices_path.parent.mkdir(parents=True, exist_ok=True)
-        compute_prices(cfg, base_instance, offline_state, prices_path)
-
-    online_policy = spec.online_factory(cfg)
+    aux_path: Path | None = None
+    if online_count > 0:
+        if spec.online_label == "PrimalDual":
+            aux_path = Path(output_dir) / f"prices_{spec.online_label}_{spec.name}_seed{chosen_seed}.json"
+            aux_path.parent.mkdir(parents=True, exist_ok=True)
+            # Sample an independent instance from the same distribution to avoid lookahead
+            # bias when computing prices.
+            pricing_seed = chosen_seed + 1  # deterministic but different instance
+            pricing_instance = generate_instance_with_online(cfg, seed=pricing_seed)
+            if len(pricing_instance.offline_items) == 0:
+                pricing_offline_state, _ = build_empty_offline_solution(pricing_instance)
+            else:
+                pricing_offline_solver = spec.offline_factory(cfg)
+                pricing_offline_state, _ = pricing_offline_solver.solve(pricing_instance)
+            compute_prices(cfg, pricing_instance, pricing_offline_state, aux_path)
+        elif spec.online_label == "DynamicLearning" and cfg.dla.log_prices:
+            aux_path = Path(cfg.dla.output_dir) / f"dla_log_{spec.name}_seed{chosen_seed}.json"
+            aux_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            
+    # Instantiate online policy, passing freshly computed prices when required.
+    if spec.online_label == "PrimalDual":
+        if aux_path is None or not aux_path.exists():
+            raise FileNotFoundError(
+                f"PrimalDual prices file missing for seed {chosen_seed} at {aux_path}. "
+                "Ensure prices are precomputed (online_count > 0) before running."
+            )
+        online_policy = spec.online_factory(cfg, aux_path)
+    elif spec.online_label == "BalancedPrices":
+        # placeholder for potential other pd approaches
+        placeholder = 0
+    elif spec.online_label == "DynamicLearning":
+        online_policy = spec.online_factory(cfg, aux_path if cfg.dla.log_prices else None)
+    else:
+        online_policy = spec.online_factory(cfg)
     online_solver = OnlineSolver(cfg, online_policy)
     final_state, online_info = online_solver.run(base_instance, offline_state)
 
@@ -119,6 +148,7 @@ def run_pipeline(
         offline_method=spec.offline_label,
         online_method=spec.online_label,
         slack_config=cfg.slack,
+        dla_config=cfg.dla,
     )
 
     problem = summary["problem"]

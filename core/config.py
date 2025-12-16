@@ -102,6 +102,23 @@ class SlackConfig:
     fraction: float = 0.0
     apply_to_online: bool = True
 
+
+@dataclass
+class DLAConfig:
+    """
+    Dynamic Learning Algorithm (Agrawal et al. 2014) controls.
+    - epsilon: base sampling fraction that sets geometric update times t_k = ε * M_onl * 2^k
+    - log_prices: if True, dump per-phase prices/residuals for plotting/debugging
+    - output_dir: directory where per-run DLA logs are stored
+    - min_phase_len: optional lower bound on phase length to avoid tiny intervals
+    - use_offline_slack: if True, respect cfg.slack settings when building residual LPs
+    """
+    epsilon: float = 0.1
+    log_prices: bool = False
+    output_dir: str = "results/dla"
+    min_phase_len: int = 1
+    use_offline_slack: bool = True
+
 @dataclass
 class SolverConfig:
     """
@@ -129,6 +146,7 @@ class Config:
     stoch: StochasticConfig
     pred: PredictionConfig
     slack: SlackConfig
+    dla: DLAConfig
     solver: SolverConfig
     eval: EvalConfig
 
@@ -145,6 +163,7 @@ def load_config(path: str | Path) -> Config:
         stoch=StochasticConfig(**data["stoch"]),
         pred=PredictionConfig(**data["pred"]),
         slack=SlackConfig(**data["slack"]),
+        dla=DLAConfig(**data.get("dla", {})),
         solver=SolverConfig(**data.get("solver", {})),
         eval=EvalConfig(tuple(data["eval"]["seeds"])),
     )

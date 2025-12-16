@@ -103,7 +103,7 @@ class AssignmentState:
     Current assignment state during the process/simulation.
     - load: current load per bin (length N+1; fallback has no capacity limit)
     - assigned_bin: mapping item -> bin index
-    - offline_evicted: set of offline ids that were evicted (and moved to fallback)
+    - offline_evicted: set of offline ids that were evicted at least once during online phase
     """
     load: np.ndarray
     assigned_bin: Dict[ItemId, BinId]
