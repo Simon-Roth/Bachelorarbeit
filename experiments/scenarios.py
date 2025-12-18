@@ -138,13 +138,13 @@ for suffix, M_off in RATIO_SWEEP:
         )
     )
 
-# ========= FAMILY 2: VOLUME VARIANCE (ceteris paribus mean & bounds), fixed ratio (20/80) =========
+# ========= FAMILY 2: VOLUME VARIANCE (ceteris paribus mean & bounds), fixed ratio (50/50) =========
 for tag, ab in [("lowvar", VOL_LOW_VAR), ("highvar", VOL_HIGH_VAR)]:
     SCENARIO_SWEEP.append(
         ScenarioConfig(
-            name=f"vol_{tag}_off20_on80",
+            name=f"vol_{tag}_off50_on50",
             overrides={
-                **ratio_overrides(60),
+                **ratio_overrides(150),
                 **volume_overrides(ab, DEFAULT_BOUNDS),
                 **base_cost_graph_overrides(),
             },
@@ -152,13 +152,13 @@ for tag, ab in [("lowvar", VOL_LOW_VAR), ("highvar", VOL_HIGH_VAR)]:
         )
     )
 
-# ========= FAMILY 3: GRAPH SPARSITY (only p_onl changes), fixed ratio (20/80) =========
+# ========= FAMILY 3: GRAPH SPARSITY (only p_onl changes), fixed ratio (50/50) =========
 for tag, p_onl in [("dense", 0.8), ("sparse", 0.2)]:
     SCENARIO_SWEEP.append(
         ScenarioConfig(
-            name=f"graph_{tag}_off20_on80",
+            name=f"graph_{tag}_off50_on50",
             overrides={
-                **ratio_overrides(60),
+                **ratio_overrides(150),
                 **volume_overrides(VOL_MID_VAR, DEFAULT_BOUNDS),
                 **base_cost_graph_overrides(),
                 "graphs": {"p_off": 0.8, "p_onl": p_onl},
@@ -167,13 +167,13 @@ for tag, p_onl in [("dense", 0.8), ("sparse", 0.2)]:
         )
     )
 
-# ========= FAMILY 4: LOAD REGIME (capacity_mean changes), fixed ratio (20/80) =========
+# ========= FAMILY 4: LOAD REGIME (capacity_mean changes), fixed ratio (50/50) =========
 for tag, cap_mean in [("underload", 35.0), ("overload", 25.0)]:
     SCENARIO_SWEEP.append(
         ScenarioConfig(
-            name=f"load_{tag}_off20_on80",
+            name=f"load_{tag}_off50_on50",
             overrides={
-                **ratio_overrides(60),
+                **ratio_overrides(150),
                 **volume_overrides(VOL_MID_VAR, DEFAULT_BOUNDS),
                 **base_cost_graph_overrides(),
                 "problem": {"capacity_mean": cap_mean},
@@ -192,9 +192,9 @@ uniform_cap_mean = baseline_cap_mean * (uniform_Ev / baseline_Ev)  # keeps rho f
 
 SCENARIO_SWEEP.append(
     ScenarioConfig(
-        name="uniform_beta11_same_load_off20_on80",
+        name="uniform_beta11_same_load_off50_on50",
         overrides={
-            **ratio_overrides(60),
+            **ratio_overrides(150),
             **volume_overrides(VOL_UNIFORM_01, DEFAULT_BOUNDS),
             **base_cost_graph_overrides(),
             "problem": {"capacity_mean": float(uniform_cap_mean)},
