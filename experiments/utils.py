@@ -137,6 +137,16 @@ def build_pipeline_summary(
     residual_caps = [
         max(0.0, float(cap) - float(offline_state.load[i])) for i, cap in enumerate(eff_caps)
     ]
+    final_residual_caps = [
+        max(
+            0.0,
+            float(cap)
+            - float(final_state.load[i] if i < len(final_state.load) else 0.0),
+        )
+        for i, cap in enumerate(eff_caps)
+    ]
+    offline_loads = [float(v) for v in offline_state.load.tolist()]
+    final_loads = [float(v) for v in final_state.load.tolist()]
 
     offline_obj = float(offline_info.obj_value)
     offline_status = getattr(offline_info, "status", None)
@@ -171,6 +181,9 @@ def build_pipeline_summary(
         "final_items_in_fallback": count_fallback_items(final_state, instance),
         "offline_assignments": {str(k): int(v) for k, v in offline_state.assigned_bin.items()},
         "offline_residual_capacities": residual_caps,
+        "final_residual_capacities": final_residual_caps,
+        "offline_loads": offline_loads,
+        "final_loads": final_loads,
     }
     if slack_config is not None:
         summary["slack"] = {

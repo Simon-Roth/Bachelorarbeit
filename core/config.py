@@ -104,6 +104,50 @@ class SlackConfig:
 
 
 @dataclass
+class UtilizationPenaltyConfig:
+    """
+    Optional convex, piecewise-linear penalty on per-bin utilization to encourage
+    balanced residual capacities. Applied only in the offline MILP objective.
+    - enabled: turn the penalty on/off.
+    - breakpoints: utilization breakpoints in [0,1]; must be sorted ascending.
+    - penalties: penalty value at each breakpoint (same length as breakpoints).
+    - weight: multiplier applied to the penalty term in the objective.
+    - auto_scale: if True, scale weight by the mean assignment cost of the instance
+      so the penalty is roughly on the same magnitude as costs.
+    """
+    enabled: bool = False
+    breakpoints: List[float] = None  # type: ignore[assignment]
+    penalties: List[float] = None    # type: ignore[assignment]
+    weight: float = 1.0
+    auto_scale: bool = False
+
+    def __post_init__(self) -> None:
+        if self.breakpoints is None:
+            self.breakpoints = [0.0, 0.7, 0.9, 1.0]
+        if self.penalties is None:
+            self.penalties = [0.0, 0.0, 1.0, 3.0]
+        if len(self.breakpoints) != len(self.penalties):
+            raise ValueError("util_penalty.breakpoints and util_penalty.penalties must have the same length.")
+        if any(b < 0 or b > 1 for b in self.breakpoints):
+            raise ValueError("util_penalty.breakpoints must be within [0,1].")
+        if sorted(self.breakpoints) != self.breakpoints:
+            raise ValueError("util_penalty.breakpoints must be sorted ascending.")
+
+
+@dataclass
+class UtilizationPricingConfig:
+    """
+    Controls the utilization-based pricing heuristic (UtilizationPricedDecreasing).
+    - update_rule: 'polynomial' (current behavior) or 'exponential'
+    - price_exponent: exponent for the polynomial rule (lambda ∝ util^exp)
+    - exp_rate: growth rate for the exponential rule (lambda ∝ exp(exp_rate*util) - 1)
+    """
+    update_rule: str = "polynomial"
+    price_exponent: float = 2.0
+    exp_rate: float = 4.0
+
+
+@dataclass
 class DLAConfig:
     """
     Dynamic Learning Algorithm (Agrawal et al. 2014) controls.
@@ -146,6 +190,8 @@ class Config:
     stoch: StochasticConfig
     pred: PredictionConfig
     slack: SlackConfig
+    util_penalty: UtilizationPenaltyConfig
+    util_pricing: UtilizationPricingConfig
     dla: DLAConfig
     solver: SolverConfig
     eval: EvalConfig
@@ -163,6 +209,8 @@ def load_config(path: str | Path) -> Config:
         stoch=StochasticConfig(**data["stoch"]),
         pred=PredictionConfig(**data["pred"]),
         slack=SlackConfig(**data["slack"]),
+        util_penalty=UtilizationPenaltyConfig(**data.get("util_penalty", {})),
+        util_pricing=UtilizationPricingConfig(**data.get("util_pricing", {})),
         dla=DLAConfig(**data.get("dla", {})),
         solver=SolverConfig(**data.get("solver", {})),
         eval=EvalConfig(tuple(data["eval"]["seeds"])),

@@ -8,6 +8,7 @@ Scenarios encode the variations (volumes, graphs, load) themselves.
 import argparse
 import copy
 import json
+from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Sequence, Tuple
 
@@ -26,6 +27,8 @@ from offline.offline_solver import OfflineMILPSolver
 from online.state_utils import count_fallback_items
 
 OfflineResult = Tuple[AssignmentState, OfflineSolutionInfo | HeuristicSolutionInfo]
+
+GOOD_STATUSES = {"COMPLETED", "OPTIMAL", "NO_ITEMS"}
 
 
 # ---- Core sweep logic -------------------------------------------------------
@@ -77,6 +80,17 @@ def parse_args() -> argparse.Namespace:
         "--compute-optimal",
         action="store_true",
         help="If set, solve and store the full-horizon optimum for relative plots.",
+    )
+    parser.add_argument(
+        "--skip-ratio-plot",
+        action="store_true",
+        help="Skip generating the ratio line plot after the sweep finishes.",
+    )
+    parser.add_argument(
+        "--ratio-plot-metric",
+        choices=["objective_ratio", "total_objective", "runtime_total"],
+        default="objective_ratio",
+        help="Metric to plot against offline ratio in the generated line chart.",
     )
     return parser.parse_args()
 
@@ -160,12 +174,141 @@ def _compute_optimal(
     return optimal_summary
 
 
+def _parse_offline_ratio_pct(scenario_name: str) -> int | None:
+    """
+    Extract the offline percentage from names like 'baseline_midvar_off30_on70'.
+    Returns None if the pattern is absent.
+    """
+    marker = "_off"
+    idx = scenario_name.rfind(marker)
+    if idx < 0:
+        return None
+    suffix = scenario_name[idx + 1 :]  # offXX_onYY
+    if not suffix.startswith("off"):
+        return None
+    try:
+        off_token = suffix.split("_", 1)[0]  # offXX
+        return int(off_token.replace("off", ""))
+    except Exception:
+        return None
+
+
+def _collect_ratio_metrics(output_root: Path, metric: str) -> Dict[str, Dict[int, List[float]]]:
+    """
+    Load sweep JSONs and collect metric values per (pipeline, offline_pct).
+    Uses only feasible/optimal runs to keep curves clean.
+    """
+    values: Dict[str, Dict[int, List[float]]] = defaultdict(lambda: defaultdict(list))
+    for path in output_root.rglob("pipeline_*.json"):
+        try:
+            data = json.loads(path.read_text())
+        except Exception:
+            continue
+
+        pipeline = data.get("pipeline")
+        if not pipeline:
+            continue
+
+        status = data.get("online", {}).get("status", "")
+        if status not in GOOD_STATUSES:
+            continue
+
+        offline_pct = _parse_offline_ratio_pct(data.get("scenario", "") or path.parent.parent.name)
+        if offline_pct is None:
+            continue
+
+        try:
+            if metric == "runtime_total":
+                offline_rt = float(data["offline"]["runtime"])
+                online_rt = float(data["online"]["runtime"])
+                val = offline_rt + online_rt
+            elif metric in data:
+                val = float(data[metric])
+            elif metric in data.get("online", {}):
+                val = float(data["online"][metric])
+            else:
+                continue
+        except Exception:
+            continue
+
+        values[pipeline][offline_pct].append(val)
+
+    return values
+
+
+def _make_ratio_line_plot(output_root: Path, metric: str = "objective_ratio") -> None:
+    """
+    Create a minimal line chart showing metric vs offline ratio for each pipeline.
+    Saves PNG and PDF to output_root.
+    """
+    metric_values = _collect_ratio_metrics(output_root, metric)
+    if not metric_values:
+        print("[warn] No data found for ratio line plot (did you run with --compute-optimal for objective ratios?).")
+        return
+
+    # Aggregate means per ratio
+    curves: Dict[str, List[Tuple[int, float]]] = {}
+    for pipe, by_ratio in metric_values.items():
+        pts = []
+        for ratio, vals in by_ratio.items():
+            if not vals:
+                continue
+            pts.append((ratio, sum(vals) / float(len(vals))))
+        if pts:
+            curves[pipe] = sorted(pts, key=lambda t: t[0])
+
+    if not curves:
+        print("[warn] No aggregated points for ratio line plot.")
+        return
+
+    # Lazy import to avoid forcing matplotlib on code paths that don't plot.
+    import matplotlib.pyplot as plt
+
+    plt.style.use("seaborn-v0_8-whitegrid")
+    fig, ax = plt.subplots(figsize=(8, 5), dpi=140)
+
+    all_ratios = set()
+    for points in curves.values():
+        all_ratios.update(r for r, _ in points)
+    xticks = sorted(all_ratios)
+
+    for pipe, points in sorted(curves.items()):
+        ratios = [r for r, _ in points]
+        vals = [v for _, v in points]
+        ax.plot(ratios, vals, marker="o", linewidth=2.0, markersize=4, label=pipe)
+
+    y_label = {
+        "objective_ratio": "Objective ratio (cost / OPT)",
+        "total_objective": "Total objective",
+        "runtime_total": "Runtime total (s)",
+    }.get(metric, metric)
+
+    ax.set_xlabel("Offline items (%)")
+    ax.set_ylabel(y_label)
+    ax.set_xticks(xticks)
+    ax.set_xlim(min(xticks), max(xticks))
+    ax.legend(frameon=False, title="Pipeline")
+    for spine in ["top", "right"]:
+        ax.spines[spine].set_visible(False)
+    fig.tight_layout()
+
+    out_png = output_root / "ratio_line_plot.png"
+    out_pdf = output_root / "ratio_line_plot.pdf"
+    fig.savefig(out_png, bbox_inches="tight")
+    fig.savefig(out_pdf, bbox_inches="tight")
+    print(f"[info] Saved ratio line plot: {out_png} and {out_pdf}")
+    plt.close(fig)
+
+
 def run_param_sweep(
     base_cfg: Config,
     scenarios: Sequence[ScenarioConfig],
     pipeline_specs: Sequence[PipelineSpec],
     output_root: Path,
     compute_optimal: bool,
+    *,
+    make_ratio_plot: bool = True,
+    ratio_plot_metric: str = "objective_ratio",
 ) -> None:
     output_root.mkdir(parents=True, exist_ok=True)
 
@@ -268,13 +411,24 @@ def run_param_sweep(
                     f"fallback={fallback_final}, objective={total_obj:.3f} -> {path}"
                 )
 
+    if make_ratio_plot:
+        _make_ratio_line_plot(output_root, metric=ratio_plot_metric)
+
 
 def main() -> None:
     args = parse_args()
     base_cfg = load_config(args.base_config)
     scenarios = list(select_scenarios(args.scenarios))
     pipelines = _select_pipelines(args.pipelines)
-    run_param_sweep(base_cfg, scenarios, pipelines, args.output_root, args.compute_optimal)
+    run_param_sweep(
+        base_cfg,
+        scenarios,
+        pipelines,
+        args.output_root,
+        args.compute_optimal,
+        make_ratio_plot=not getattr(args, "skip_ratio_plot", False),
+        ratio_plot_metric=getattr(args, "ratio_plot_metric", "objective_ratio"),
+    )
 
 
 if __name__ == "__main__":

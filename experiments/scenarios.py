@@ -80,12 +80,19 @@ VOL_HIGH_VAR  = beta_from_mean_kappa(TARGET_M, 6.0)   # (2,4)
 # Uniform baseline on [0,1] is Beta(1,1)
 VOL_UNIFORM_01 = (1.0, 1.0)
 
-# Ratio sweep (your original idea)
+# Ratio sweep
 RATIO_SWEEP = [
-    ("off0_on100",   0),
-    ("off20_on80",  60),
-    ("off50_on50", 150),
-    ("off80_on20", 240),
+    ("off0_on100",    0),
+    #("off10_on90",   30),
+    #("off20_on80",   60),
+    ("off30_on70",   90),
+    #("off40_on60",  120),
+    ("off50_on50",  150),
+    #("off60_on40",  180),
+    ("off70_on30",  210),
+    #("off80_on20",  240),
+    #("off90_on10",  270),
+    #("off100_on0",  300),
 ]
 
 
@@ -168,18 +175,21 @@ for tag, p_onl in [("dense", 0.8), ("sparse", 0.2)]:
     )
 
 # ========= FAMILY 4: LOAD REGIME (capacity_mean changes), fixed ratio (50/50) =========
-for tag, cap_mean in [("underload", 35.0), ("overload", 25.0)]:
+for tag, cap_mean in [("underload", 40.0), ("overload", 18.0)]:
+    base = ratio_overrides(150)
+    # Preserve the ratio overrides (M_off + horizon) while tweaking capacity_mean.
+    base["problem"]["capacity_mean"] = cap_mean
     SCENARIO_SWEEP.append(
         ScenarioConfig(
             name=f"load_{tag}_off50_on50",
             overrides={
-                **ratio_overrides(150),
+                **base,
                 **volume_overrides(VOL_MID_VAR, DEFAULT_BOUNDS),
                 **base_cost_graph_overrides(),
-                "problem": {"capacity_mean": cap_mean},
             },
             description="Load regime test by varying capacity_mean only (volumes/costs fixed).",
         )
+        
     )
 
 # ========= FAMILY 5: UNIFORM SHAPE CHECK via Beta(1,1) but SAME GLOBAL LOAD =========

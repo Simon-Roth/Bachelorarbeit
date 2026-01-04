@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+import math
 from typing import Dict, Tuple, List
 
 import numpy as np
@@ -16,12 +17,14 @@ class UtilizationPricedDecreasing:
     - process offline items in descending volume order
     - each bin keeps a utilization-based price λ_i
     - assignment score is cost_{ji} + λ_i * volume_j
-    Encourages distributing load away from congested bins without solving a true dual.
+    Encourages distributing load away from congested bins.
     """
 
-    def __init__(self, cfg, *, price_exponent: float = 2.0) -> None:
+    def __init__(self, cfg, *, price_exponent: float | None = None, update_rule: str | None = None, exp_rate: float | None = None) -> None:
         self.cfg = cfg
-        self.price_exponent = price_exponent
+        self.update_rule = (update_rule or cfg.util_pricing.update_rule).lower()
+        self.price_exponent = price_exponent if price_exponent is not None else cfg.util_pricing.price_exponent
+        self.exp_rate = exp_rate if exp_rate is not None else cfg.util_pricing.exp_rate
 
     def solve(self, inst: Instance) -> Tuple[AssignmentState, HeuristicSolutionInfo]:
         start_time = time.perf_counter()
@@ -119,8 +122,12 @@ class UtilizationPricedDecreasing:
 
     def _updated_lambda(self, load: float, capacity: float, scale: float) -> float:
         if capacity <= 0.0:
-            return scale * 10.0
+            raise KeyError('Capacity <= 0')
         util = min(max(load / capacity, 0.0), 1.0)
+        if self.update_rule == "exponential":
+            # Exponential growth: λ = scale * (exp(rate * util) - 1)
+            return scale * (math.exp(self.exp_rate * util) - 1.0)
+        # Default: polynomial growth λ = scale * util^p
         return scale * (util ** self.price_exponent)
 
     def _calculate_objective(

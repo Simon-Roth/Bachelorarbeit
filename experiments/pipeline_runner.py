@@ -13,9 +13,11 @@ from experiments.utils import (
 from pathlib import Path
 from online.online_solver import OnlineSolver
 from online.prices import compute_prices
+from online.state_utils import count_fallback_items
 from data.generators import generate_instance_with_online
 from core.models import AssignmentState, Instance
 from offline.models import OfflineSolutionInfo
+from online.models import OnlineSolutionInfo
 
 
 OfflineFactory = Callable[[Config], object]
@@ -98,6 +100,39 @@ def run_pipeline(
     else:
         offline_solver = spec.offline_factory(cfg)
         offline_state, offline_info = offline_solver.solve(base_instance)
+
+    # Short-circuit when there are no online items: skip pricing/policy construction.
+    if online_count == 0:
+        final_state = copy.deepcopy(offline_state)
+        online_info = OnlineSolutionInfo(
+            status="NO_ITEMS",
+            runtime=0.0,
+            total_cost=0.0,
+            fallback_items=count_fallback_items(final_state, base_instance),
+            evicted_offline=0,
+            decisions=[],
+        )
+        summary = build_pipeline_summary(
+            spec.name,
+            chosen_seed,
+            cfg,
+            base_instance,
+            offline_state,
+            final_state,
+            offline_info,
+            online_info,
+            offline_method=spec.offline_label,
+            online_method=spec.online_label,
+            slack_config=cfg.slack,
+            dla_config=cfg.dla,
+        )
+        problem = summary["problem"]
+        prefix = (
+            f"pipeline_{spec.name.replace('+', '_').replace(' ', '_')}_"
+            f"N{problem['N']}_Moff{problem['M_off']}_Mon{problem['M_on']}_seed{chosen_seed}"
+        )
+        path = save_combined_result(prefix, summary, output_dir)
+        return summary, path
 
     aux_path: Path | None = None
     if online_count > 0:

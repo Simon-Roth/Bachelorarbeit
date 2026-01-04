@@ -205,6 +205,8 @@ def iter_records() -> Iterable[Dict[str, Any]]:
         status = data.get("online", {}).get("status", "UNKNOWN")
 
         family_base, knob_variant, ratio_variant = parse_scenario_name(scenario)
+        final_fallback = data.get("final_items_in_fallback")
+        penalty_events = data.get("online", {}).get("evicted_offline")
 
         # Compute objective_ratio if missing but optimal_objective present
         obj_ratio = data.get("objective_ratio")
@@ -226,6 +228,8 @@ def iter_records() -> Iterable[Dict[str, Any]]:
             "runtime_total": float(data["offline"]["runtime"] + data["online"]["runtime"]),
             "objective_ratio": obj_ratio,
             "infeasible_flag": 0 if status in GOOD_STATUSES else 1,
+            "final_fallback": float(final_fallback) if final_fallback is not None else np.nan,
+            "evicted_offline": float(penalty_events) if penalty_events is not None else np.nan,
             "offline_residuals": data.get("offline_residual_capacities"),
             "final_residuals": data.get("final_residual_capacities"),
             "offline_loads": data.get("offline_loads"),
@@ -676,6 +680,101 @@ def plot_residuals_family(
     plt.close(fig)
 
 
+def plot_fallback_penalty_family(
+    df_fb: pd.DataFrame,
+    df_pen: pd.DataFrame,
+    family: str,
+    pipelines: List[str],
+) -> None:
+    """
+    Dual-row bar plot: top = mean fallback items, bottom = mean offline evictions (penalty events).
+    """
+    if not pipelines:
+        return
+    if df_fb.empty or df_pen.empty:
+        return
+
+    df_fb = df_fb[df_fb["pipeline"].isin(pipelines)].copy()
+    df_pen = df_pen[df_pen["pipeline"].isin(pipelines)].copy()
+    if df_fb.empty or df_pen.empty:
+        return
+
+    df_fb = df_fb.rename(columns={"metric_mean": "fallback_mean", "metric_sem": "fallback_sem"})
+    df_pen = df_pen.rename(columns={"metric_mean": "penalty_mean", "metric_sem": "penalty_sem"})
+
+    merge_keys = ["family_base", "knob_variant", "ratio_variant", "pipeline"]
+    merged = df_fb.merge(df_pen, on=merge_keys, how="inner")
+    if merged.empty:
+        return
+
+    x_dim = choose_x_dimension(merged)
+    x_order = order_x(merged, x_dim)
+
+    merged["_x"] = merged[x_dim].astype(str)
+    lookup = {(str(r["pipeline"]), str(r["_x"])): r for _, r in merged.iterrows()}
+
+    xs = np.arange(len(x_order))
+    n_p = len(pipelines)
+    width = 0.82 / max(n_p, 1)
+
+    fig_w = max(10.0, 1.15 * len(x_order) + 4.0)
+    fig_h = 6.8
+    fig = plt.figure(figsize=(fig_w, fig_h))
+    gs = fig.add_gridspec(2, 1, height_ratios=[3.0, 2.4], hspace=0.1)
+    ax_fb = fig.add_subplot(gs[0, 0])
+    ax_pen = fig.add_subplot(gs[1, 0], sharex=ax_fb)
+
+    for a in (ax_fb, ax_pen):
+        a.spines["top"].set_visible(False)
+        a.spines["right"].set_visible(False)
+        a.grid(True, axis="y", alpha=0.22)
+
+    title = f"Family: {family}  |  x = {x_dim}"
+    fig.suptitle(title, y=0.98, fontsize=13)
+    ax_fb.set_title("Fallback items (mean ± SEM)", fontsize=9, color="dimgray", pad=6)
+    ax_pen.set_title("Offline evictions (penalty events, mean ± SEM)", fontsize=9, color="dimgray", pad=4)
+
+    for j, pipe in enumerate(pipelines):
+        fb_means, fb_sems, pen_means, pen_sems = [], [], [], []
+        for xv in x_order:
+            r = lookup.get((pipe, str(xv)))
+            if r is None or int(r.get("feasible_runs_x", 0)) <= 0:
+                fb_means.append(np.nan)
+                fb_sems.append(0.0)
+                pen_means.append(np.nan)
+                pen_sems.append(0.0)
+            else:
+                fb_means.append(float(r.get("fallback_mean", np.nan)))
+                fb_sems.append(float(r.get("fallback_sem", 0.0)) if math.isfinite(float(r.get("fallback_sem", 0.0))) else 0.0)
+                pen_means.append(float(r.get("penalty_mean", np.nan)))
+                pen_sems.append(float(r.get("penalty_sem", 0.0)) if math.isfinite(float(r.get("penalty_sem", 0.0))) else 0.0)
+
+        x_pos = xs - 0.41 + (j + 0.5) * width
+        ax_fb.bar(x_pos, fb_means, width=width, label=pipe)
+        ax_fb.errorbar(x_pos, fb_means, yerr=fb_sems, fmt="none", capsize=3, linewidth=1)
+
+        ax_pen.bar(x_pos, pen_means, width=width, label=pipe)
+        ax_pen.errorbar(x_pos, pen_means, yerr=pen_sems, fmt="none", capsize=3, linewidth=1)
+
+    ax_fb.set_ylabel("Fallback items")
+    ax_pen.set_ylabel("Penalties (evictions)")
+
+    ax_pen.set_xticks(xs)
+    ax_pen.set_xticklabels(x_order, rotation=25, ha="right")
+    ax_pen.set_xlabel(x_dim)
+
+    ax_fb.legend(loc="upper left", bbox_to_anchor=(1.01, 1.0), frameon=False, fontsize=8)
+
+    fig.tight_layout(rect=[0, 0, 0.86, 0.96])
+
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    fname = f"fallback_penalty_family_{family}_x-{x_dim}".replace("/", "_")
+    fig.savefig(OUTPUT_DIR / f"{fname}.png", dpi=240, bbox_inches="tight")
+    fig.savefig(OUTPUT_DIR / f"{fname}.pdf", bbox_inches="tight")
+    merged_sorted = merged.sort_values([x_dim, "pipeline"])
+    (OUTPUT_DIR / f"{fname}.csv").write_text(merged_sorted.to_csv(index=False))
+    plt.close(fig)
+
 
 def main() -> None:
     args = parse_args()
@@ -711,6 +810,8 @@ def main() -> None:
         return
 
     agg = aggregate(df, args.metric)
+    agg_fallback = aggregate(df, "final_fallback")
+    agg_penalty = aggregate(df, "evicted_offline")
     if agg.empty:
         print("No aggregates available.")
         return
@@ -728,6 +829,9 @@ def main() -> None:
             df_fam_raw = df_fam_raw[df_fam_raw["pipeline"].isin(pipes)]
             plot_residuals_family(df_fam_raw, fam, pipes, cap_lookup, stage="offline")
             plot_residuals_family(df_fam_raw, fam, pipes, cap_lookup, stage="final")
+            df_fallback = agg_fallback[agg_fallback["family_base"] == fam]
+            df_penalty = agg_penalty[agg_penalty["family_base"] == fam]
+            plot_fallback_penalty_family(df_fallback, df_penalty, fam, pipes)
 
     print(f"Saved plots to {OUTPUT_DIR}")
 

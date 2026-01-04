@@ -1,0 +1,13 @@
+family_base,knob_variant,ratio_variant,pipeline,runs_total_x,infeasible_runs_x,feasible_runs_x,fallback_mean,fallback_sem,infeasible_rate_x,runs_total_y,infeasible_runs_y,feasible_runs_y,penalty_mean,penalty_sem,infeasible_rate_y,_x
+load,overload,off50_on50,MILP+CostAwareBestFit,50,2,48,94.52083333333333,0.3261498797942972,0.04,50,2,48,100.1875,0.36057510455988057,0.04,overload
+load,overload,off50_on50,MILP+PrimalDual,50,15,35,98.77142857142857,0.4675804236503411,0.3,50,15,35,108.62857142857143,0.7971437607295865,0.3,overload
+load,overload,off50_on50,UtilizationPriced(exp)+CostAwareBestFit,50,0,50,94.08,0.32806171644359594,0.0,50,0,50,97.52,0.3867604859204049,0.0,overload
+load,overload,off50_on50,UtilizationPriced(exp)+PrimalDual,50,8,42,96.28571428571429,0.37532133237877163,0.16,50,8,42,103.11904761904762,0.5476190476190476,0.16,overload
+load,overload,off50_on50,UtilizationPriced+CostAwareBestFit,50,0,50,94.3,0.34076744119647323,0.0,50,0,50,97.96,0.3854072852323942,0.0,overload
+load,overload,off50_on50,UtilizationPriced+PrimalDual,50,6,44,97.06818181818181,0.34315679031708896,0.12,50,6,44,104.93181818181819,0.5155076392073225,0.12,overload
+load,underload,off50_on50,MILP+CostAwareBestFit,50,0,50,0.0,0.0,0.0,50,0,50,0.0,0.0,0.0,underload
+load,underload,off50_on50,MILP+PrimalDual,50,0,50,0.0,0.0,0.0,50,0,50,0.0,0.0,0.0,underload
+load,underload,off50_on50,UtilizationPriced(exp)+CostAwareBestFit,50,0,50,0.0,0.0,0.0,50,0,50,0.0,0.0,0.0,underload
+load,underload,off50_on50,UtilizationPriced(exp)+PrimalDual,50,0,50,0.0,0.0,0.0,50,0,50,0.0,0.0,0.0,underload
+load,underload,off50_on50,UtilizationPriced+CostAwareBestFit,50,0,50,0.0,0.0,0.0,50,0,50,0.0,0.0,0.0,underload
+load,underload,off50_on50,UtilizationPriced+PrimalDual,50,0,50,0.0,0.0,0.0,50,0,50,0.0,0.0,0.0,underload

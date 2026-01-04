@@ -13,3 +13,5 @@ plots/online/slack_sweep/
 plots/online/results/
 .BAvenv/
 results/offline_cache
+# Generated experiment outputs
+results/**/*.json
