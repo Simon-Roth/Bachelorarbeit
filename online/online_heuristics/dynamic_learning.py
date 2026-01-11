@@ -25,7 +25,7 @@ from gurobipy import GRB
 import numpy as np
 
 from core.config import Config
-from core.general_utils import effective_capacity
+from core.general_utils import effective_capacity, scalarize_vector, vector_fits, residual_vector
 from core.models import AssignmentState, Decision, Instance, OnlineItem
 from online.policies.base import BaseOnlinePolicy, PolicyInfeasibleError
 from online.state_utils import (
@@ -49,7 +49,7 @@ class DynamicLearningPolicy(BaseOnlinePolicy):
         # Runtime state
         self._phase_idx: int = -1
         self._schedule: List[int] = []
-        self._current_prices: Dict[int, float] = {}
+        self._current_prices: Dict[int, np.ndarray] = {}
         self._processed: int = 0  # number of arrivals already placed
         self._seen_items: List[OnlineItem] = []
         self._log_records: List[Dict[str, object]] = []
@@ -79,8 +79,7 @@ class DynamicLearningPolicy(BaseOnlinePolicy):
 
         # First, try to place without evictions.
         for bin_id in candidate_bins:
-            residual = ctx.effective_caps[bin_id] - (ctx.loads[bin_id] + item.volume)
-            if residual < -TOLERANCE:
+            if not vector_fits(ctx.loads[bin_id], item.volume, ctx.effective_caps[bin_id], TOLERANCE):
                 continue
 
             score = self._score(bin_id, item, instance)
@@ -172,7 +171,7 @@ class DynamicLearningPolicy(BaseOnlinePolicy):
         state: AssignmentState,
         t_k: int,
         h_k: float,
-    ) -> Dict[int, float]:
+    ) -> Dict[int, np.ndarray]:
         """
         Solve fractional LP on observed items to get dual prices for capacities.
         """
@@ -182,12 +181,13 @@ class DynamicLearningPolicy(BaseOnlinePolicy):
         observed: Sequence[OnlineItem] = self._seen_items[:t_k]
         online_volumes = {item.id: item.volume for item in observed}
         N = len(instance.bins)
+        dims = instance.bins[0].capacity.shape[0] if instance.bins else 1
 
         # Capacity scaling per phase, optionally respecting offline slack.
-        caps_scaled: List[float] = []
+        caps_scaled: List[np.ndarray] = []
         use_slack = self.cfg.dla.use_offline_slack and self.cfg.slack.enforce_slack
         slack_fraction = self.cfg.slack.fraction if use_slack else 0.0
-        offline_load = np.zeros(N, dtype=float)
+        offline_load = np.zeros((N, dims), dtype=float)
         off_vols = offline_volumes(instance)
         fallback_idx = instance.fallback_bin_index
         # Count fixed offline load currently occupying regular bins.
@@ -196,15 +196,15 @@ class DynamicLearningPolicy(BaseOnlinePolicy):
                 continue
             if bin_id < 0 or bin_id >= N or bin_id == fallback_idx:
                 continue
-            offline_load[bin_id] += off_vols.get(item_id, 0.0)
+            offline_load[bin_id] += off_vols.get(item_id, np.zeros(dims))
 
         horizon = float(len(instance.online_items))
         for idx, bin_spec in enumerate(instance.bins):
             phys = bin_spec.capacity
             eff_total = effective_capacity(phys, use_slack, slack_fraction)
-            base_residual = max(0.0, eff_total - offline_load[idx])
+            base_residual = np.maximum(0.0, eff_total - offline_load[idx])
             scaled = (1.0 - h_k) * (t_k / horizon) * base_residual
-            caps_scaled.append(max(0.0, scaled))
+            caps_scaled.append(np.maximum(0.0, scaled))
 
         # Residual after offline load only (online load is modeled by LP vars).
         residual = caps_scaled
@@ -217,10 +217,15 @@ class DynamicLearningPolicy(BaseOnlinePolicy):
             y_fallback[item.id] = m.addVar(lb=0.0, ub=1.0, name=f"y_fallback_{item.id}")
         m.update()
 
-        cap_constr = {}
+        cap_constr: Dict[tuple[int, int], gp.Constr] = {}
         for i in range(N):
-            expr = gp.quicksum(online_volumes[j] * var for (j, ii), var in x.items() if ii == i)
-            cap_constr[i] = m.addConstr(expr <= residual[i], name=f"cap_{i}")
+            for d in range(dims):
+                expr = gp.quicksum(
+                    online_volumes[j][d] * var
+                    for (j, ii), var in x.items()
+                    if ii == i
+                )
+                cap_constr[(i, d)] = m.addConstr(expr <= float(residual[i][d]), name=f"cap_{i}_{d}")
 
         for item in observed:
             item_vars = [var for (j, i), var in x.items() if j == item.id]
@@ -236,7 +241,13 @@ class DynamicLearningPolicy(BaseOnlinePolicy):
         if m.Status != GRB.OPTIMAL:
             raise RuntimeError(f"DLA pricing LP not optimal, status={m.Status}")
 
-        return {i: abs(float(cap_constr[i].Pi)) for i in range(N)}
+        prices: Dict[int, np.ndarray] = {}
+        for i in range(N):
+            lam = np.zeros(dims, dtype=float)
+            for d in range(dims):
+                lam[d] = abs(float(cap_constr[(i, d)].Pi))
+            prices[i] = lam
+        return prices
 
     def _log_phase(self, t_k: int, h_k: float) -> None:
         if not self.cfg.dla.log_prices or self.price_path is None:
@@ -245,7 +256,7 @@ class DynamicLearningPolicy(BaseOnlinePolicy):
             "phase": int(self._phase_idx),
             "t_k": int(t_k),
             "h_k": float(h_k),
-            "prices": {int(k): float(v) for k, v in self._current_prices.items()},
+            "prices": {int(k): [float(x) for x in v.tolist()] for k, v in self._current_prices.items()},
         }
         self._log_records.append(record)
         self.price_path.parent.mkdir(parents=True, exist_ok=True)
@@ -283,8 +294,11 @@ class DynamicLearningPolicy(BaseOnlinePolicy):
 
     def _score(self, bin_id: int, item: OnlineItem, instance: Instance) -> float:
         c_ji = float(instance.costs.assign[item.id, bin_id])
-        lam_i = self._current_prices.get(bin_id, 0.0)
-        return c_ji + lam_i * float(item.volume)
+        lam_i = self._current_prices.get(bin_id, np.zeros_like(item.volume))
+        if self.cfg.util_pricing.vector_prices:
+            return c_ji + float(np.dot(lam_i, item.volume))
+        lam_scalar = scalarize_vector(lam_i, "max")
+        return c_ji + lam_scalar * scalarize_vector(item.volume, self.cfg.heuristics.size_key)
 
     def _eviction_order_desc(
         self,
@@ -296,7 +310,12 @@ class DynamicLearningPolicy(BaseOnlinePolicy):
             for itm_id, assigned_bin in ctx.assignments.items()
             if assigned_bin == bin_id and itm_id < len(ctx.instance.offline_items)
         ]
-        offline_ids.sort(key=lambda oid: ctx.offline_volumes.get(oid, 0.0), reverse=True)
+        size_key = self.cfg.heuristics.size_key
+        zero_vec = np.zeros_like(ctx.effective_caps[0])
+        offline_ids.sort(
+            key=lambda oid: scalarize_vector(ctx.offline_volumes.get(oid, zero_vec), size_key),
+            reverse=True,
+        )
         return offline_ids
 
     def _select_reassignment_bin(
@@ -305,7 +324,8 @@ class DynamicLearningPolicy(BaseOnlinePolicy):
         origin_bin: int,
         ctx: PlacementContext,
     ) -> Optional[int]:
-        volume = ctx.offline_volumes.get(offline_id, 0.0)
+        zero_vec = np.zeros_like(ctx.effective_caps[0])
+        volume = ctx.offline_volumes.get(offline_id, zero_vec)
         instance = ctx.instance
         feasible_row = instance.feasible.feasible[offline_id]
         regular_bins = len(instance.bins)
@@ -318,15 +338,16 @@ class DynamicLearningPolicy(BaseOnlinePolicy):
         for candidate in range(regular_bins):
             if candidate == origin_bin or feasible_row[candidate] != 1:
                 continue
-            residual = ctx.effective_caps[candidate] - (ctx.loads[candidate] + volume)
-            if residual + TOLERANCE < 0:
+            residual_vec = residual_vector(ctx.loads[candidate], volume, ctx.effective_caps[candidate])
+            if not vector_fits(ctx.loads[candidate], volume, ctx.effective_caps[candidate], TOLERANCE):
                 continue
             cost = instance.costs.assign[offline_id, candidate]
+            residual_score = scalarize_vector(residual_vec, self.cfg.heuristics.residual_scalarization)
             if cost < best_cost - 1e-9 or (
-                abs(cost - best_cost) <= 1e-9 and residual < best_residual
+                abs(cost - best_cost) <= 1e-9 and residual_score < best_residual
             ):
                 best_cost = cost
-                best_residual = residual
+                best_residual = residual_score
                 best_candidate = candidate
 
         if best_candidate is not None:

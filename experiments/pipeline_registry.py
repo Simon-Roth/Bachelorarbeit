@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import numpy as np
 from typing import Callable, Dict, List
 
 from core.config import Config
@@ -73,37 +74,49 @@ def _cfg_with_offline_slack(cfg: Config) -> Config:
     cfg_copy = copy.deepcopy(cfg)
     # Slack sized to expected online volume relative to total capacity.
     # E[V_online] = lo + (hi - lo) * a/(a+b) for Beta(a,b) on [0,1] scaled to [lo,hi].
-    a, b = cfg_copy.volumes.online_beta
-    lo, hi = cfg_copy.volumes.online_bounds
-    mean_vol = 0.0
-    if (a + b) > 0:
-        mean_vol = lo + (hi - lo) * (a / float(a + b))
+    dims = max(1, int(getattr(cfg_copy.problem, "dimensions", 1)))
+    beta = np.asarray(cfg_copy.volumes.online_beta, dtype=float)
+    bounds = np.asarray(cfg_copy.volumes.online_bounds, dtype=float)
+    if beta.shape == (2,):
+        beta = np.tile(beta, (dims, 1))
+    if bounds.shape == (2,):
+        bounds = np.tile(bounds, (dims, 1))
+    if beta.shape != (dims, 2) or bounds.shape != (dims, 2):
+        raise ValueError("online_beta/online_bounds must be length-2 or shape (dims, 2).")
+
+    mean_vol = np.zeros(dims, dtype=float)
+    for d in range(dims):
+        a, b = beta[d]
+        lo, hi = bounds[d]
+        if (a + b) > 0:
+            mean_vol[d] = lo + (hi - lo) * (a / float(a + b))
 
     horizon = max(0, cfg_copy.stoch.horizon)
     expected_online_volume = horizon * mean_vol
 
     capacities = cfg_copy.problem.capacities
     if capacities:
-        total_capacity = sum(capacities)
+        cap_arr = np.asarray(capacities, dtype=float)
+        if cap_arr.ndim == 1 and dims > 1:
+            cap_arr = np.tile(cap_arr.reshape((-1, 1)), (1, dims))
+        total_capacity = np.sum(cap_arr, axis=0)
     else:
-        total_capacity = cfg_copy.problem.N * float(cfg_copy.problem.capacity_mean)
+        cap_mean = np.asarray(cfg_copy.problem.capacity_mean, dtype=float)
+        if cap_mean.size == 1:
+            cap_mean = np.full(dims, float(cap_mean))
+        total_capacity = cfg_copy.problem.N * cap_mean
 
     slack_fraction = 0.0
-    if total_capacity > 0 and expected_online_volume > 0:
-        slack_fraction = max(0.0, min(0.99, expected_online_volume / total_capacity))
+    ratios = np.zeros(dims, dtype=float)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ratios = np.where(total_capacity > 0, expected_online_volume / total_capacity, 0.0)
+    if np.any(ratios > 0):
+        slack_fraction = max(0.0, min(0.99, float(np.max(ratios))))
     cfg_copy.slack.enforce_slack = slack_fraction > 0.0
     cfg_copy.slack.fraction = slack_fraction
     cfg_copy.slack.apply_to_online = False
     return cfg_copy
 
-
-def _cfg_with_util_penalty(cfg: Config) -> Config:
-    """
-    Enable utilization-aware PWL penalty in the offline MILP objective.
-    """
-    cfg_copy = copy.deepcopy(cfg)
-    cfg_copy.util_penalty.enabled = True
-    return cfg_copy
 
 
 PIPELINES: List[PipelineSpec] = [
@@ -123,14 +136,14 @@ PIPELINES: List[PipelineSpec] = [
         online_factory=lambda cfg: CostAwareBestFitOnlinePolicy(cfg),
         offline_cache_key="UtilizationPriced",
     ),
-    PipelineSpec(
-        name="UtilizationPriced(exp)+CostAwareBestFit",
-        offline_label="UtilizationPricedExp",
-        online_label="CostAwareBestFit",
-        offline_factory=lambda cfg: UtilizationPricedDecreasing(cfg, update_rule="exponential"),
-        online_factory=lambda cfg: CostAwareBestFitOnlinePolicy(cfg),
-        offline_cache_key="UtilizationPricedExp",
-    ),
+    # PipelineSpec(
+    #     name="UtilizationPriced(exp)+CostAwareBestFit",
+    #     offline_label="UtilizationPricedExp",
+    #     online_label="CostAwareBestFit",
+    #     offline_factory=lambda cfg: UtilizationPricedDecreasing(cfg, update_rule="exponential"),
+    #     online_factory=lambda cfg: CostAwareBestFitOnlinePolicy(cfg),
+    #     offline_cache_key="UtilizationPricedExp",
+    # ),
     PipelineSpec(
         name="UtilizationPriced+PrimalDual",
         offline_label="UtilizationPriced",
@@ -139,14 +152,14 @@ PIPELINES: List[PipelineSpec] = [
         online_factory=lambda cfg, price_path=None: PrimalDualPolicy(cfg, price_path=price_path) if price_path else PrimalDualPolicy(cfg),
         offline_cache_key="UtilizationPriced",
     ),
-    PipelineSpec(
-        name="UtilizationPriced(exp)+PrimalDual",
-        offline_label="UtilizationPricedExp",
-        online_label="PrimalDual",
-        offline_factory=lambda cfg: UtilizationPricedDecreasing(cfg, update_rule="exponential"),
-        online_factory=lambda cfg, price_path=None: PrimalDualPolicy(cfg, price_path=price_path) if price_path else PrimalDualPolicy(cfg),
-        offline_cache_key="UtilizationPricedExp",
-    ),
+    # PipelineSpec(
+    #     name="UtilizationPriced(exp)+PrimalDual",
+    #     offline_label="UtilizationPricedExp",
+    #     online_label="PrimalDual",
+    #     offline_factory=lambda cfg: UtilizationPricedDecreasing(cfg, update_rule="exponential"),
+    #     online_factory=lambda cfg, price_path=None: PrimalDualPolicy(cfg, price_path=price_path) if price_path else PrimalDualPolicy(cfg),
+    #     offline_cache_key="UtilizationPricedExp",
+    # ),
     PipelineSpec(
         name="MILP+PrimalDual",
         offline_label="MILP",
@@ -155,52 +168,52 @@ PIPELINES: List[PipelineSpec] = [
         online_factory=lambda cfg, price_path=None: PrimalDualPolicy(cfg, price_path=price_path) if price_path else PrimalDualPolicy(cfg),
         offline_cache_key="MILP",
     ),
-    # PipelineSpec(
-    #     name="MILP(offSlack)+PrimalDual",
-    #     offline_label="MILP_offSlack",
-    #     online_label="PrimalDual",
-    #     offline_factory=lambda cfg, base_factory=make_milp_solver(): base_factory(
-    #         _cfg_with_offline_slack(cfg)
-    #     ),
-    #     online_factory=lambda cfg, price_path=None: PrimalDualPolicy(cfg, price_path=price_path) if price_path else PrimalDualPolicy(cfg),
-    #     offline_cache_key="MILP_offSlack",
-    # ),
-    # PipelineSpec(
-    #     name="MILP(offSlack)+CostAwareBestFit",
-    #     offline_label="MILP_offSlack",
-    #     online_label="CostAwareBestFit",
-    #     offline_factory=lambda cfg, base_factory=make_milp_solver(): base_factory(
-    #         _cfg_with_offline_slack(cfg)
-    #     ),
-    #     online_factory=lambda cfg: CostAwareBestFitOnlinePolicy(cfg),
-    #     offline_cache_key="MILP_offSlack",
-    # ),
-    # PipelineSpec(
-    #     name="MILP(offSlack)+DynamicLearning",
-    #     offline_label="MILP_offSlack",
-    #     online_label="DynamicLearning",
-    #     offline_factory=lambda cfg, base_factory=make_milp_solver(): base_factory(
-    #         _cfg_with_offline_slack(cfg)
-    #     ),
-    #     online_factory=lambda cfg, price_path=None: DynamicLearningPolicy(cfg, price_path=price_path) if price_path else DynamicLearningPolicy(cfg),
-    #     offline_cache_key="MILP_offSlack",
-    # ),
-    # PipelineSpec(
-    #     name="MILP+DynamicLearning",
-    #     offline_label="MILP",
-    #     online_label="DynamicLearning",
-    #     offline_factory=make_milp_solver(),
-    #     online_factory=lambda cfg, price_path=None: DynamicLearningPolicy(cfg, price_path=price_path) if price_path else DynamicLearningPolicy(cfg),
-    #     offline_cache_key="MILP",
-    # ),
-    # PipelineSpec(
-    #     name="UtilizationPriced+DynamicLearning",
-    #     offline_label="UtilizationPriced",
-    #     online_label="DynamicLearning",
-    #     offline_factory=lambda cfg: UtilizationPricedDecreasing(cfg),
-    #     online_factory=lambda cfg, price_path=None: DynamicLearningPolicy(cfg, price_path=price_path) if price_path else DynamicLearningPolicy(cfg),
-    #     offline_cache_key="UtilizationPriced",
-    # ),
+    PipelineSpec(
+        name="MILP(offSlack)+PrimalDual",
+        offline_label="MILP_offSlack",
+        online_label="PrimalDual",
+        offline_factory=lambda cfg, base_factory=make_milp_solver(): base_factory(
+            _cfg_with_offline_slack(cfg)
+        ),
+        online_factory=lambda cfg, price_path=None: PrimalDualPolicy(cfg, price_path=price_path) if price_path else PrimalDualPolicy(cfg),
+        offline_cache_key="MILP_offSlack",
+    ),
+    PipelineSpec(
+        name="MILP(offSlack)+CostAwareBestFit",
+        offline_label="MILP_offSlack",
+        online_label="CostAwareBestFit",
+        offline_factory=lambda cfg, base_factory=make_milp_solver(): base_factory(
+            _cfg_with_offline_slack(cfg)
+        ),
+        online_factory=lambda cfg: CostAwareBestFitOnlinePolicy(cfg),
+        offline_cache_key="MILP_offSlack",
+    ),
+    PipelineSpec(
+        name="MILP(offSlack)+DynamicLearning",
+        offline_label="MILP_offSlack",
+        online_label="DynamicLearning",
+        offline_factory=lambda cfg, base_factory=make_milp_solver(): base_factory(
+            _cfg_with_offline_slack(cfg)
+        ),
+        online_factory=lambda cfg, price_path=None: DynamicLearningPolicy(cfg, price_path=price_path) if price_path else DynamicLearningPolicy(cfg),
+        offline_cache_key="MILP_offSlack",
+    ),
+    PipelineSpec(
+        name="MILP+DynamicLearning",
+        offline_label="MILP",
+        online_label="DynamicLearning",
+        offline_factory=make_milp_solver(),
+        online_factory=lambda cfg, price_path=None: DynamicLearningPolicy(cfg, price_path=price_path) if price_path else DynamicLearningPolicy(cfg),
+        offline_cache_key="MILP",
+    ),
+    PipelineSpec(
+        name="UtilizationPriced+DynamicLearning",
+        offline_label="UtilizationPriced",
+        online_label="DynamicLearning",
+        offline_factory=lambda cfg: UtilizationPricedDecreasing(cfg),
+        online_factory=lambda cfg, price_path=None: DynamicLearningPolicy(cfg, price_path=price_path) if price_path else DynamicLearningPolicy(cfg),
+        offline_cache_key="UtilizationPriced",
+    ),
     
 ]
 

@@ -5,7 +5,11 @@ from typing import Dict, Optional, List, Callable
 import numpy as np
 
 from core.config import Config
-from core.general_utils import effective_capacity
+from core.general_utils import (
+    effective_capacity,
+    vector_fits,
+    volume_total,
+)
 from core.models import (
     AssignmentState,
     Instance,
@@ -74,16 +78,16 @@ def clone_state(state: AssignmentState) -> AssignmentState:
     ) 
 
 
-def build_volume_lookup(instance: Instance) -> Dict[int, float]:
-    """Map item_id -> volume for both offline and online items."""
-    lookup: Dict[int, float] = {item.id: item.volume for item in instance.offline_items}
+def build_volume_lookup(instance: Instance) -> Dict[int, np.ndarray]:
+    """Map item_id -> volume vector for both offline and online items."""
+    lookup: Dict[int, np.ndarray] = {item.id: item.volume for item in instance.offline_items}
     for online_item in instance.online_items or []:
         lookup[online_item.id] = online_item.volume
     return lookup
 
 
-def offline_volumes(instance: Instance) -> Dict[int, float]:
-    """Map offline item_id -> volume."""
+def offline_volumes(instance: Instance) -> Dict[int, np.ndarray]:
+    """Map offline item_id -> volume vector."""
     return {item.id: item.volume for item in instance.offline_items}
 
 
@@ -92,7 +96,7 @@ def apply_decision(
     arriving_item: OnlineItem,
     state: AssignmentState,
     instance: Instance,
-    volume_lookup: Dict[int, float],
+    volume_lookup: Dict[int, np.ndarray],
 ) -> None:
     """Mutate 'state' according to the decision taken for the arriving item."""
     regular_bins = len(instance.bins)
@@ -133,7 +137,7 @@ def apply_decision(
 def add_to_bin(
     state: AssignmentState,
     bin_id: int,
-    volume: float,
+    volume: np.ndarray,
     regular_bins: int,
     fallback_idx: int,
 ) -> None:
@@ -154,12 +158,12 @@ def add_to_bin(
 def remove_from_bin(
     state: AssignmentState,
     bin_id: int,
-    volume: float,
+    volume: np.ndarray,
 ) -> None:
     """Decrease load of bin_id by volume (saturating at zero)."""
     if bin_id < 0 or bin_id >= len(state.load):
         raise ValueError(f"Cannot remove volume from invalid bin {bin_id}")
-    state.load[bin_id] = max(0.0, state.load[bin_id] - volume)
+    state.load[bin_id] = np.maximum(0.0, state.load[bin_id] - volume)
 
 
 def count_fallback_items(state: AssignmentState, instance: Instance) -> int:
@@ -175,7 +179,7 @@ def effective_capacities(
     cfg: Config,
     *,
     use_slack: Optional[bool] = None,
-) -> List[float]:
+) -> List[np.ndarray]:
     """Effective capacities for each regular bin, with optional slack override."""
     if use_slack is None:
         enforce_slack = cfg.slack.enforce_slack
@@ -188,10 +192,10 @@ def effective_capacities(
     ]
 
 
-def eviction_penalty(volume: float, cfg: Config) -> float:
+def eviction_penalty(volume: np.ndarray, cfg: Config) -> float:
     """Penalty incurred when evicting an offline item of given volume."""
     if cfg.costs.penalty_mode == "per_volume":
-        return cfg.costs.per_volume_scale * volume
+        return cfg.costs.per_volume_scale * volume_total(volume)
     return cfg.costs.reassignment_penalty
 
 
@@ -232,7 +236,7 @@ def execute_placement(
     reassignments: List[tuple[int, int]] = []
     incremental_cost = 0.0
 
-    def _current_load(bin_id: int) -> float:
+    def _current_load(bin_id: int) -> np.ndarray:
         if bin_id == fallback_idx:
             return loads[fallback_idx]
         return loads[bin_id]
@@ -240,7 +244,7 @@ def execute_placement(
     capacity = ctx.effective_caps[target_bin]
     required_volume = item.volume
 
-    if _current_load(target_bin) + required_volume <= capacity + TOLERANCE:
+    if vector_fits(_current_load(target_bin), required_volume, capacity, TOLERANCE):
         # No eviction needed, simply reserve the space and pay assignment cost.
         loads[target_bin] += required_volume
         assignment_cost = float(instance.costs.assign[item.id, target_bin])
@@ -264,7 +268,7 @@ def execute_placement(
         return None
 
     for offline_id in offline_candidates:
-        if _current_load(target_bin) + required_volume <= capacity + TOLERANCE:
+        if vector_fits(_current_load(target_bin), required_volume, capacity, TOLERANCE):
             break
 
         if offline_id not in assignments:
@@ -280,10 +284,12 @@ def execute_placement(
         if dest_bin == fallback_idx and not cfg.problem.fallback_is_enabled:
             continue
 
-        volume = ctx.offline_volumes.get(offline_id, 0.0)
+        volume = ctx.offline_volumes.get(offline_id)
+        if volume is None:
+            continue
         if dest_bin < regular_bins:
             dest_cap = ctx_mut.effective_caps[dest_bin]
-            if loads[dest_bin] + volume > dest_cap + TOLERANCE:
+            if not vector_fits(loads[dest_bin], volume, dest_cap, TOLERANCE):
                 continue
         loads[target_bin] -= volume
         if dest_bin == fallback_idx:
@@ -300,7 +306,7 @@ def execute_placement(
         evicted_pairs.append((offline_id, origin))
         reassignments.append((offline_id, dest_bin))
 
-    if _current_load(target_bin) + required_volume > capacity + TOLERANCE:
+    if not vector_fits(_current_load(target_bin), required_volume, capacity, TOLERANCE):
         return None
 
     loads[target_bin] += required_volume

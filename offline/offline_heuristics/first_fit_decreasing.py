@@ -4,6 +4,7 @@ from typing import Dict, List, Tuple
 from dataclasses import dataclass
 
 from core.models import Instance, AssignmentState
+from core.general_utils import effective_capacity, scalarize_vector, vector_fits
 from offline.offline_heuristics.core import HeuristicSolutionInfo
 
 class FirstFitDecreasing:
@@ -18,17 +19,27 @@ class FirstFitDecreasing:
         start_time = time.perf_counter()
         
         # Sort items by volume (decreasing)
-        items_sorted = sorted(enumerate(inst.offline_items), 
-                            key=lambda x: x[1].volume, reverse=True)
+        size_key = self.cfg.heuristics.size_key
+        items_sorted = sorted(
+            enumerate(inst.offline_items),
+            key=lambda x: scalarize_vector(x[1].volume, size_key),
+            reverse=True,
+        )
         
         # Initialize state
-        loads = np.zeros(len(inst.bins) + 1)  # +1 for fallback
+        dims = inst.bins[0].capacity.shape[0] if inst.bins else 1
+        loads = np.zeros((len(inst.bins) + 1, dims))  # +1 for fallback
         assigned_bin = {}
         
         # Effective capacities with slack
-        from core.general_utils import effective_capacity
-        eff_caps = [effective_capacity(bin.capacity, self.cfg.slack.enforce_slack, 
-                                     self.cfg.slack.fraction) for bin in inst.bins]
+        eff_caps = [
+            effective_capacity(
+                bin.capacity,
+                self.cfg.slack.enforce_slack,
+                self.cfg.slack.fraction,
+            )
+            for bin in inst.bins
+        ]
         
         # Assign items
         for item_idx, item in items_sorted:
@@ -37,8 +48,10 @@ class FirstFitDecreasing:
             # Try regular bins first
             for bin_idx in range(len(inst.bins)):
                 # Check feasibility and capacity
-                if (inst.feasible.feasible[item_idx, bin_idx] == 1 and
-                    loads[bin_idx] + item.volume <= eff_caps[bin_idx]):
+                if (
+                    inst.feasible.feasible[item_idx, bin_idx] == 1
+                    and vector_fits(loads[bin_idx], item.volume, eff_caps[bin_idx])
+                ):
                     
                     loads[bin_idx] += item.volume
                     assigned_bin[item_idx] = bin_idx
@@ -77,7 +90,14 @@ class FirstFitDecreasing:
             feasible=True,
             items_in_fallback=sum(1 for bin_id in assigned_bin.values() 
                                 if bin_id == len(inst.bins)),
-            utilization=np.mean(loads[:-1] / [b.capacity for b in inst.bins])
+            utilization=float(
+                np.mean(
+                    [
+                        np.max(loads[i] / inst.bins[i].capacity)
+                        for i in range(len(inst.bins))
+                    ]
+                )
+            ),
         )
         
         return state, info

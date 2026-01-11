@@ -5,7 +5,7 @@ from typing import Dict, Tuple, List
 
 import numpy as np
 
-from core.general_utils import effective_capacity
+from core.general_utils import effective_capacity, scalarize_vector, vector_fits, residual_vector
 from core.models import AssignmentState, Instance
 from offline.offline_heuristics.core import HeuristicSolutionInfo
 
@@ -23,15 +23,17 @@ class CostAwareBestFitDecreasing:
     def solve(self, inst: Instance) -> Tuple[AssignmentState, HeuristicSolutionInfo]:
         start_time = time.perf_counter()
 
-        items_sorted: List[Tuple[int, float]] = sorted(
+        size_key = self.cfg.heuristics.size_key
+        items_sorted: List[Tuple[int, np.ndarray]] = sorted(
             ((idx, item.volume) for idx, item in enumerate(inst.offline_items)),
-            key=lambda pair: pair[1],
+            key=lambda pair: scalarize_vector(pair[1], size_key),
             reverse=True,
         )
 
         regular_bins = len(inst.bins)
         fallback_idx = regular_bins
-        loads = np.zeros(regular_bins + 1)
+        dims = inst.bins[0].capacity.shape[0] if inst.bins else 1
+        loads = np.zeros((regular_bins + 1, dims))
         assigned_bin: Dict[int, int] = {}
 
         eff_caps = [
@@ -51,17 +53,17 @@ class CostAwareBestFitDecreasing:
             for bin_idx in range(regular_bins):
                 if inst.feasible.feasible[item_idx, bin_idx] != 1:
                     continue
-                projected = loads[bin_idx] + volume
-                if projected > eff_caps[bin_idx] + 1e-9:
+                if not vector_fits(loads[bin_idx], volume, eff_caps[bin_idx], 1e-9):
                     continue
                 cost = float(inst.costs.assign[item_idx, bin_idx])
-                residual = eff_caps[bin_idx] - projected
+                residual = residual_vector(loads[bin_idx], volume, eff_caps[bin_idx])
+                residual_score = scalarize_vector(residual, self.cfg.heuristics.residual_scalarization)
                 if (
                     cost < best_cost - 1e-9
-                    or (abs(cost - best_cost) <= 1e-9 and residual < best_residual)
+                    or (abs(cost - best_cost) <= 1e-9 and residual_score < best_residual)
                 ):
                     best_cost = cost
-                    best_residual = residual
+                    best_residual = residual_score
                     best_bin = bin_idx
 
             if best_bin is not None:
@@ -87,8 +89,14 @@ class CostAwareBestFitDecreasing:
             assigned_bin=assigned_bin,
             offline_evicted=set(),
         )
-        capacities = np.array([bin.capacity for bin in inst.bins], dtype=float)
-        utilization = float(np.mean(loads[:regular_bins] / capacities))
+        utilization = float(
+            np.mean(
+                [
+                    np.max(loads[i] / inst.bins[i].capacity)
+                    for i in range(len(inst.bins))
+                ]
+            )
+        )
 
         info = HeuristicSolutionInfo(
             algorithm="CostAwareBestFitDecreasing",

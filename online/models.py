@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Dict
 from core.models import Decision,Instance
 from core.config import Config
-from typing import Dict, List, Callable
 import numpy as np
 
 
@@ -50,4 +49,4 @@ class PlacementContext:
     loads: np.ndarray
     assignments: Dict[int, int]
     effective_caps: np.ndarray
-    offline_volumes: Dict[int, float]
+    offline_volumes: Dict[int, np.ndarray]

@@ -3,6 +3,7 @@ from pathlib import Path
 import json
 import gurobipy as gp
 from gurobipy import GRB
+import numpy as np
 
 from core.config import Config
 from core.general_utils import effective_capacity
@@ -15,7 +16,7 @@ def compute_prices(
     out_path: Path,
     *,
     log_to_console: bool = False,
-) -> dict[int, float]:
+) -> dict[int, float | list[float]]:
     """
     1) Solve the OFFLINE MILP on the given instance to get residual capacities.
     2) Build a fractional LP for ONLINE items only (regular bins 0..N-1).
@@ -32,8 +33,8 @@ def compute_prices(
         effective_capacity(b.capacity, use_slack, slack_fraction)
         for b in inst.bins
     ]
-    residual = [caps_eff[i] - float(offline_state.load[i]) for i in range(N)]
-    residual = [max(0.0, r) for r in residual]
+    residual = [caps_eff[i] - offline_state.load[i] for i in range(N)]
+    residual = [np.maximum(0.0, r) for r in residual]
 
     # -- Step 2: fractional LP for ONLINE items only
     m = gp.Model("online_fractional_pricing")
@@ -50,10 +51,14 @@ def compute_prices(
     m.update()
     
     # Bin capacities (residual)
-    cap_constr = {}
+    dims = inst.bins[0].capacity.shape[0] if inst.bins else 1
+    cap_constr: dict[tuple[int, int], gp.Constr] = {}
     for i in range(N):
-        expr = gp.quicksum(online_volumes[j] * var for (j, ii), var in x.items() if ii == i)
-        cap_constr[i] = m.addConstr(expr <= residual[i], name=f"cap_{i}")
+        for d in range(dims):
+            expr = gp.quicksum(
+                online_volumes[j][d] * var for (j, ii), var in x.items() if ii == i
+            )
+            cap_constr[(i, d)] = m.addConstr(expr <= float(residual[i][d]), name=f"cap_{i}_{d}")
 
     # Assignment equality per online item: either use regular capacity or fallback slack.
     for item in inst.online_items:
@@ -71,7 +76,12 @@ def compute_prices(
     if m.Status != GRB.OPTIMAL:
         raise RuntimeError(f"LP not optimal, status={m.Status}")
 
-    prices = {i: abs(float(cap_constr[i].Pi)) for i in range(N)}
+    prices: dict[int, float | list[float]] = {}
+    for i in range(N):
+        if dims == 1:
+            prices[i] = abs(float(cap_constr[(i, 0)].Pi))
+        else:
+            prices[i] = [abs(float(cap_constr[(i, d)].Pi)) for d in range(dims)]
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as f:
         json.dump({"prices": prices}, f, indent=2)

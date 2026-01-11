@@ -32,6 +32,7 @@ from core.config import load_config
 from data.generators import generate_offline_instance
 from experiments.scenarios import apply_config_overrides, select_scenarios
 from online.state_utils import effective_capacities
+from core.general_utils import scalarize_vector
 
 RESULTS_ROOT = Path("results/param_sweep")
 OUTPUT_DIR = Path("plots/online/param_sweep")
@@ -171,8 +172,8 @@ class EffectiveCapacityResolver:
         cfg = copy.deepcopy(cfg_template)
         try:
             inst = generate_offline_instance(cfg, int(seed))
-            caps = effective_capacities(inst, cfg, use_slack=cfg.slack.enforce_slack)
-            caps = [float(c) for c in caps]
+            caps_vec = effective_capacities(inst, cfg, use_slack=cfg.slack.enforce_slack)
+            caps = [scalarize_vector(np.asarray(c), cfg.heuristics.residual_scalarization) for c in caps_vec]
         except Exception as exc:
             if scenario_name not in self._missing:
                 print(f"[warn] Failed to recover capacities for scenario '{scenario_name}' seed {seed}: {exc}")

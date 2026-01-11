@@ -5,6 +5,8 @@ from typing import List, Optional, Set, TYPE_CHECKING
 if TYPE_CHECKING:
     import numpy
 
+import numpy as np
+
 from core.config import Config
 from core.models import AssignmentState, Decision, Instance, OnlineItem
 from online.policies.base import BaseOnlinePolicy, PolicyInfeasibleError
@@ -14,6 +16,7 @@ from online.state_utils import (
     execute_placement,
     TOLERANCE,
 )
+from core.general_utils import scalarize_vector, residual_vector, vector_fits
 
 
 class CostAwareBestFitOnlinePolicy(BaseOnlinePolicy):
@@ -54,8 +57,10 @@ class CostAwareBestFitOnlinePolicy(BaseOnlinePolicy):
                 continue
 
             incremental_cost = decision.incremental_cost
-            residual = ctx.effective_caps[bin_id] - ctx.loads[bin_id]
-            residual_score = residual if residual >= -TOLERANCE else float("inf")
+            residual_vec = ctx.effective_caps[bin_id] - ctx.loads[bin_id]
+            residual_score = scalarize_vector(residual_vec, self.cfg.heuristics.residual_scalarization)
+            if not np.all(residual_vec >= -TOLERANCE):
+                residual_score = float("inf")
 
             if (
                 incremental_cost < best_cost - 1e-9
@@ -103,7 +108,12 @@ class CostAwareBestFitOnlinePolicy(BaseOnlinePolicy):
             for itm_id, assigned_bin in ctx.assignments.items()
             if assigned_bin == bin_id and itm_id < len(ctx.instance.offline_items)
         ]
-        offline_ids.sort(key=lambda oid: ctx.offline_volumes.get(oid, 0.0), reverse=True)
+        size_key = self.cfg.heuristics.size_key
+        zero_vec = np.zeros_like(ctx.effective_caps[0])
+        offline_ids.sort(
+            key=lambda oid: scalarize_vector(ctx.offline_volumes.get(oid, zero_vec), size_key),
+            reverse=True,
+        )
         return offline_ids
 
     def _select_reassignment_bin(
@@ -112,7 +122,8 @@ class CostAwareBestFitOnlinePolicy(BaseOnlinePolicy):
         origin_bin: int,
         ctx: PlacementContext,
     ) -> Optional[int]:
-        volume = ctx.offline_volumes.get(offline_id, 0.0)
+        zero_vec = np.zeros_like(ctx.effective_caps[0])
+        volume = ctx.offline_volumes.get(offline_id, zero_vec)
         instance = ctx.instance
         feasible_row = instance.feasible.feasible[offline_id]
         regular_bins = len(instance.bins)
@@ -125,15 +136,16 @@ class CostAwareBestFitOnlinePolicy(BaseOnlinePolicy):
         for candidate in range(regular_bins):
             if candidate == origin_bin or feasible_row[candidate] != 1:
                 continue
-            residual = ctx.effective_caps[candidate] - (ctx.loads[candidate] + volume)
-            if residual + TOLERANCE < 0:
+            residual_vec = residual_vector(ctx.loads[candidate], volume, ctx.effective_caps[candidate])
+            if not vector_fits(ctx.loads[candidate], volume, ctx.effective_caps[candidate], TOLERANCE):
                 continue
             cost = instance.costs.assign[offline_id, candidate]
+            residual_score = scalarize_vector(residual_vec, self.cfg.heuristics.residual_scalarization)
             if cost < best_cost - 1e-9 or (
-                abs(cost - best_cost) <= 1e-9 and residual < best_residual
+                abs(cost - best_cost) <= 1e-9 and residual_score < best_residual
             ):
                 best_cost = cost
-                best_residual = residual
+                best_residual = residual_score
                 best_candidate = candidate
 
         if best_candidate is not None:

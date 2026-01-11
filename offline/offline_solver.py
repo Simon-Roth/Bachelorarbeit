@@ -1,7 +1,6 @@
 from __future__ import annotations
 from typing import Dict, Tuple, Optional
 import numpy as np
-import warnings
 
 import gurobipy as gp
 from gurobipy import GRB
@@ -114,8 +113,8 @@ class OfflineMILPSolver:
             m.addConstr(gp.quicksum(vars_j) == 1, name=f"assign_{j}")
 
         # Kapazitätsrestriktionen nur auf regulären Bins (0..N-1)
-        cap_used: Dict[int, float] = {}
-        load_exprs: Dict[int, gp.LinExpr] = {}
+        cap_used: Dict[int, np.ndarray] = {}
+        load_exprs: Dict[Tuple[int, int], gp.LinExpr] = {}
         for i in range(self.N):
             cap_i = _effective_capacity(
                 inst.bins[i].capacity,
@@ -123,16 +122,17 @@ class OfflineMILPSolver:
                 self.cfg.slack.fraction,
             )
             cap_used[i] = cap_i
-            vars_i = []
-            coeffs = []
-            for j in range(self.M):
-                if (j, i) in self.x:
-                    vars_i.append(self.x[(j, i)])
-                    coeffs.append(self.vol[j])
-            if vars_i:
-                load_expr = gp.LinExpr(coeffs, vars_i)
-                load_exprs[i] = load_expr
-                m.addConstr(load_expr <= cap_i, name=f"cap_{i}")
+            for d in range(self.vol.shape[1]):
+                vars_i = []
+                coeffs = []
+                for j in range(self.M):
+                    if (j, i) in self.x:
+                        vars_i.append(self.x[(j, i)])
+                        coeffs.append(self.vol[j, d])
+                if vars_i:
+                    load_expr = gp.LinExpr(coeffs, vars_i)
+                    load_exprs[(i, d)] = load_expr
+                    m.addConstr(load_expr <= float(cap_i[d]), name=f"cap_{i}_{d}")
 
         # Zielfunktion: minimale Zuweisungskosten
         obj_terms = []
@@ -141,35 +141,6 @@ class OfflineMILPSolver:
                 if (j, i) in self.x:
                     obj_terms.append(self.cost[j, i] * self.x[(j, i)])
 
-        # Optional: convex piecewise-linear utilization penalty (regular bins only)
-        up_cfg = self.cfg.util_penalty
-        if getattr(up_cfg, "enabled", False):
-            # Auto-scale penalty weight to match cost scale if requested.
-            mean_assign_cost = 1.0
-            try:
-                mean_assign_cost = float(np.mean(self.cost[:, : self.N]))
-                if not np.isfinite(mean_assign_cost) or mean_assign_cost <= 0:
-                    mean_assign_cost = 1.0
-            except Exception:
-                mean_assign_cost = 1.0
-            weight = float(up_cfg.weight) * (mean_assign_cost if getattr(up_cfg, "auto_scale", False) else 1.0)
-
-            bps = list(up_cfg.breakpoints or [])
-            vals = list(up_cfg.penalties or [])
-            if len(bps) == len(vals) and len(bps) >= 2 and bps == sorted(bps) and all(0.0 <= b <= 1.0 for b in bps):
-                for i, cap_i in cap_used.items():
-                    if cap_i <= 0:
-                        continue
-                    util_i = m.addVar(lb=0.0, ub=1.0, vtype=GRB.CONTINUOUS, name=f"util_{i}")
-                    pen_i = m.addVar(lb=0.0, vtype=GRB.CONTINUOUS, name=f"utilpen_{i}")
-                    load_expr = load_exprs.get(i)
-                    if load_expr is None:
-                        continue
-                    m.addConstr(util_i == (1.0 / float(cap_i)) * load_expr, name=f"util_def_{i}")
-                    m.addGenConstrPWL(util_i, pen_i, bps, vals, name=f"util_pwl_{i}")
-                    obj_terms.append(weight * pen_i)
-            else:
-                warnings.warn("util_penalty config invalid (check breakpoints/penalties); skipping penalty term.")
         m.setObjective(gp.quicksum(obj_terms), GRB.MINIMIZE)
         m.update()
 
@@ -243,7 +214,7 @@ class OfflineMILPSolver:
                 x_sol[j, i] = int(round(var.X))
 
         # Loads & Zuordnungen nur berechnen, wenn eine Lösung existiert
-        load = np.zeros(self.N + 1, dtype=float)
+        load = np.zeros((self.N + 1, self.vol.shape[1]), dtype=float)
         assigned_bin: Dict[int, int] = {}
         if has_solution:
             for j in range(self.M):

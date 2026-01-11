@@ -13,6 +13,7 @@ from core.config import Config, SlackConfig, DLAConfig
 from data.generators import generate_instance_with_online
 from online.online_solver import OnlineSolver
 from online.state_utils import count_fallback_items, effective_capacities
+from core.general_utils import scalarize_vector
 
 OfflineSolverProtocol = Callable[[Config], object]
 OnlinePolicyProtocol = Callable[[Config], object]
@@ -54,8 +55,9 @@ def build_empty_offline_solution(instance: Instance) -> Tuple[AssignmentState, O
     Return a zero-load assignment state and stub OfflineSolutionInfo when no offline items exist.
     """
     fallback_dim = instance.fallback_bin_index + 1
+    dims = instance.bins[0].capacity.shape[0] if instance.bins else 1
     state = AssignmentState(
-        load=np.zeros(fallback_dim, dtype=float),
+        load=np.zeros((fallback_dim, dims), dtype=float),
         assigned_bin={},
     )
     info = OfflineSolutionInfo(
@@ -130,23 +132,36 @@ def build_pipeline_summary(
         "N": len(instance.bins),
         "M_off": len(instance.offline_items),
         "M_on": len(instance.online_items),
+        "dimensions": instance.bins[0].capacity.shape[0] if instance.bins else 1,
     }
     # Residual capacity after offline phase (regular bins only), w.r.t. the effective
     # capacities used by the offline solver (slack applied if configured).
     eff_caps = effective_capacities(instance, cfg, use_slack=cfg.slack.enforce_slack)
-    residual_caps = [
-        max(0.0, float(cap) - float(offline_state.load[i])) for i, cap in enumerate(eff_caps)
+    residual_caps_vec = [
+        np.maximum(0.0, cap - offline_state.load[i]) for i, cap in enumerate(eff_caps)
     ]
-    final_residual_caps = [
-        max(
+    final_residual_caps_vec = [
+        np.maximum(
             0.0,
-            float(cap)
-            - float(final_state.load[i] if i < len(final_state.load) else 0.0),
+            cap
+            - (final_state.load[i] if i < len(final_state.load) else 0.0),
         )
         for i, cap in enumerate(eff_caps)
     ]
-    offline_loads = [float(v) for v in offline_state.load.tolist()]
-    final_loads = [float(v) for v in final_state.load.tolist()]
+    residual_caps = [
+        scalarize_vector(vec, cfg.heuristics.residual_scalarization) for vec in residual_caps_vec
+    ]
+    final_residual_caps = [
+        scalarize_vector(vec, cfg.heuristics.residual_scalarization) for vec in final_residual_caps_vec
+    ]
+    offline_loads_vec = offline_state.load.tolist()
+    final_loads_vec = final_state.load.tolist()
+    offline_loads = [
+        scalarize_vector(np.asarray(v), cfg.heuristics.size_key) for v in offline_loads_vec
+    ]
+    final_loads = [
+        scalarize_vector(np.asarray(v), cfg.heuristics.size_key) for v in final_loads_vec
+    ]
 
     offline_obj = float(offline_info.obj_value)
     offline_status = getattr(offline_info, "status", None)
@@ -184,6 +199,10 @@ def build_pipeline_summary(
         "final_residual_capacities": final_residual_caps,
         "offline_loads": offline_loads,
         "final_loads": final_loads,
+        "offline_residual_capacities_vec": [vec.tolist() for vec in residual_caps_vec],
+        "final_residual_capacities_vec": [vec.tolist() for vec in final_residual_caps_vec],
+        "offline_loads_vec": offline_loads_vec,
+        "final_loads_vec": final_loads_vec,
     }
     if slack_config is not None:
         summary["slack"] = {

@@ -16,20 +16,20 @@ class BinSpec:
     """
     Regular bin specification.
     - id: 0..N-1
-    - capacity: C_i
+    - capacity: capacity vector (length d)
     """
     id: BinId
-    capacity: float
+    capacity: np.ndarray
 
 @dataclass(frozen=True)
 class ItemSpec:
     """
     Item specification.
     - id: unique integer id (offline: 0..M_off-1; online arrivals start at M_off)
-    - volume: V_j
+    - volume: volume vector (length d)
     """
     id: ItemId
-    volume: float
+    volume: np.ndarray
 
 @dataclass
 class Costs:
@@ -86,11 +86,11 @@ class OnlineItem:
     """
     Online item arrival.
     - id: unique id (>= M_off)
-    - volume: size of item
+    - volume: size vector (length d)
     - feasible_bins: regular bins only (no fallback), given at arrival time
     """
     id: ItemId
-    volume: float
+    volume: np.ndarray
     feasible_bins: List[BinId]
 
 # ---------------------------
@@ -101,7 +101,7 @@ class OnlineItem:
 class AssignmentState:
     """
     Current assignment state during the process/simulation.
-    - load: current load per bin (length N+1; fallback has no capacity limit)
+    - load: current load per bin (shape (N+1, d); fallback has no capacity limit)
     - assigned_bin: mapping item -> bin index
     - offline_evicted: set of offline ids that were evicted at least once during online phase
     """

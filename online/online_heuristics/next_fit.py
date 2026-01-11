@@ -14,6 +14,7 @@ from online.state_utils import (
     execute_placement,
     TOLERANCE,
 )
+from core.general_utils import vector_fits
 
 
 class NextFitOnlinePolicy(BaseOnlinePolicy):
@@ -45,8 +46,7 @@ class NextFitOnlinePolicy(BaseOnlinePolicy):
 
         # Try to place without eviction inside the active window
         for bin_id in window:
-            residual = ctx.effective_caps[bin_id] - (ctx.loads[bin_id] + item.volume)
-            if residual >= -TOLERANCE:
+            if vector_fits(ctx.loads[bin_id], item.volume, ctx.effective_caps[bin_id], TOLERANCE):
                 decision = execute_placement(
                     bin_id,
                     item,
@@ -118,6 +118,7 @@ class NextFitOnlinePolicy(BaseOnlinePolicy):
             if assigned_bin == bin_id and itm_id < len(ctx.instance.offline_items)
         ]
         return offline_ids  # FIFO order by default
+
 
     def _choose_destination(
         self,

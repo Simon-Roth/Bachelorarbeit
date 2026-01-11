@@ -13,6 +13,7 @@ class ProblemConfig:
     Core structural parameters for an instance.
     - N: number of regular bins
     - M_off: number of offline items
+    - dimensions: number of dimensions for capacities/volumes
     - capacities: list of bin capacities (len == N) (optional if using distribution)
     - capacity_mean/std: parameters to synthesize capacities when list shorter than N
     - fallback_is_enabled: always True for OFFLINE items; ONLINE must NOT use fallback
@@ -20,6 +21,7 @@ class ProblemConfig:
     N: int
     M_off: int
     capacities: List[float]
+    dimensions: int = 1
     capacity_mean: float = 1.0
     capacity_std: float = 0.1
     fallback_is_enabled: bool = True
@@ -28,10 +30,10 @@ class ProblemConfig:
 class VolumeGenerationConfig:
     """
     Volume distributions for offline and online items.
-    - offline_beta: Beta distribution parameters for offline item volumes.
-    - offline_bounds: lower/upper bounds applied to offline volumes.
-    - online_beta: Beta distribution parameters for online item volumes.
-    - online_bounds: lower/upper bounds applied to online volumes (independent of capacities).
+    - offline_beta: Beta distribution parameters (shared or per-dimension).
+    - offline_bounds: lower/upper bounds (shared or per-dimension).
+    - online_beta: Beta distribution parameters (shared or per-dimension).
+    - online_bounds: lower/upper bounds (shared or per-dimension).
     """
     offline_beta: Tuple[float, float] = (1, 1)
     offline_bounds: Tuple[float, float] = (0.05, 0.3)
@@ -104,47 +106,18 @@ class SlackConfig:
 
 
 @dataclass
-class UtilizationPenaltyConfig:
-    """
-    Optional convex, piecewise-linear penalty on per-bin utilization to encourage
-    balanced residual capacities. Applied only in the offline MILP objective.
-    - enabled: turn the penalty on/off.
-    - breakpoints: utilization breakpoints in [0,1]; must be sorted ascending.
-    - penalties: penalty value at each breakpoint (same length as breakpoints).
-    - weight: multiplier applied to the penalty term in the objective.
-    - auto_scale: if True, scale weight by the mean assignment cost of the instance
-      so the penalty is roughly on the same magnitude as costs.
-    """
-    enabled: bool = False
-    breakpoints: List[float] = None  # type: ignore[assignment]
-    penalties: List[float] = None    # type: ignore[assignment]
-    weight: float = 1.0
-    auto_scale: bool = False
-
-    def __post_init__(self) -> None:
-        if self.breakpoints is None:
-            self.breakpoints = [0.0, 0.7, 0.9, 1.0]
-        if self.penalties is None:
-            self.penalties = [0.0, 0.0, 1.0, 3.0]
-        if len(self.breakpoints) != len(self.penalties):
-            raise ValueError("util_penalty.breakpoints and util_penalty.penalties must have the same length.")
-        if any(b < 0 or b > 1 for b in self.breakpoints):
-            raise ValueError("util_penalty.breakpoints must be within [0,1].")
-        if sorted(self.breakpoints) != self.breakpoints:
-            raise ValueError("util_penalty.breakpoints must be sorted ascending.")
-
-
-@dataclass
 class UtilizationPricingConfig:
     """
     Controls the utilization-based pricing heuristic (UtilizationPricedDecreasing).
     - update_rule: 'polynomial' (current behavior) or 'exponential'
     - price_exponent: exponent for the polynomial rule (lambda ∝ util^exp)
     - exp_rate: growth rate for the exponential rule (lambda ∝ exp(exp_rate*util) - 1)
+    - vector_prices: if True, use per-dimension prices and dot products
     """
     update_rule: str = "polynomial"
     price_exponent: float = 2.0
     exp_rate: float = 4.0
+    vector_prices: bool = True
 
 
 @dataclass
@@ -173,6 +146,17 @@ class SolverConfig:
     use_warm_start: bool = False
     warm_start_heuristic: str = "BFD"  # "FFD", "BFD", "CBFD", "PD", "none"
 
+
+@dataclass
+class HeuristicConfig:
+    """
+    Scalarization choices for vector bin packing.
+    - size_key: "max" | "l1" | "l2" for item ordering (FFD/BFD).
+    - residual_scalarization: "max" | "l1" | "l2" for residual scoring.
+    """
+    size_key: str = "max"
+    residual_scalarization: str = "max"
+
 @dataclass
 class EvalConfig:
     """
@@ -190,10 +174,10 @@ class Config:
     stoch: StochasticConfig
     pred: PredictionConfig
     slack: SlackConfig
-    util_penalty: UtilizationPenaltyConfig
     util_pricing: UtilizationPricingConfig
     dla: DLAConfig
     solver: SolverConfig
+    heuristics: HeuristicConfig
     eval: EvalConfig
 
 def load_config(path: str | Path) -> Config:
@@ -209,9 +193,9 @@ def load_config(path: str | Path) -> Config:
         stoch=StochasticConfig(**data["stoch"]),
         pred=PredictionConfig(**data["pred"]),
         slack=SlackConfig(**data["slack"]),
-        util_penalty=UtilizationPenaltyConfig(**data.get("util_penalty", {})),
         util_pricing=UtilizationPricingConfig(**data.get("util_pricing", {})),
         dla=DLAConfig(**data.get("dla", {})),
         solver=SolverConfig(**data.get("solver", {})),
+        heuristics=HeuristicConfig(**data.get("heuristics", {})),
         eval=EvalConfig(tuple(data["eval"]["seeds"])),
     )

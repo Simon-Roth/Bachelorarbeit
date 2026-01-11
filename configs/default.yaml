@@ -1,6 +1,7 @@
 problem:
   N: 10
   M_off: 60
+  dimensions: 3
   capacities: []
   capacity_mean: 30.0
   capacity_std: 0.1
@@ -42,18 +43,15 @@ slack:
   # enforce_slack: true
   # fraction: 0.05
 
-util_penalty:
-  enabled: false
-  # Breakpoints (utilization) and penalties must have the same length and be ascending.
-  breakpoints: [0.0, 0.5, 0.75, 1.0]
-  penalties:    [0.0, 1, 2, 3]
-  weight: 1.0
-  auto_scale: true  # if true, scales weight by mean assignment cost per instance
-
 util_pricing:
   update_rule: "polynomial"  # "polynomial" | "exponential"
   price_exponent: 2.0        # used when update_rule == "polynomial"
   exp_rate: 1.5              # used when update_rule == "exponential"
+  vector_prices: true
+
+heuristics:
+  size_key: "max"
+  residual_scalarization: "max"
 
 dla:
   epsilon: 0.1           # sampling fraction controlling phase boundaries
