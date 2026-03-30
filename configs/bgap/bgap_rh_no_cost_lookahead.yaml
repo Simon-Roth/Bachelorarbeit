@@ -1,0 +1,8 @@
+generation:
+  generator: "bgap"
+
+dla:
+  output_dir: "outputs/bgap/results/dla"
+
+costs:
+  observe_future_online_costs: false

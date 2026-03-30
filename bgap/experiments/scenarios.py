@@ -323,6 +323,49 @@ for ratio_tag, T_off in [("off20_on80", 40), ("off60_on40", 120)]:
 
 
 
+# ========= FAMILY 4: CAPACITY LEVEL SWEEP (60/40, baseline coeffs) =========
+# Expected demand per bin ≈ 1500 (T=200, n=10, mean_coeff≈75).
+# Sweep covers severely over-subscribed (300%) through loose (60%) utilisation.
+for _cap_mu in [500, 750, 1000, 1250, 1500, 1750, 2000, 2500]:
+    _cap_base = ratio_overrides(120)
+    _cap_base["problem"]["b_mean"] = float(_cap_mu)
+    _cap_base["problem"]["b_std"] = float(_cap_mu) * 0.05
+    add_scenario_with_feas_variants(
+        name=f"cap_mu{_cap_mu}_off60_on40",
+        overrides={
+            **_cap_base,
+            **volume_overrides(VOL_MID_VAR, DEFAULT_BOUNDS),
+            **base_cost_graph_overrides(),
+        },
+        description=(
+            f"Capacity level sweep: b_mean={_cap_mu}, b_std={_cap_mu * 0.05:.1f} "
+            f"(5% CV), ratio 60/40, mid-variance coefficients."
+        ),
+    )
+
+
+# ========= FAMILY 5: PURELY ONLINE CAPACITY SWEEP (T_off=0, T_onl=100) =========
+# Expected demand per bin ≈ 750 (T=100, n=10, mean_coeff≈75).
+# b_mu values = Family 4 / 2  →  identical utilisation levels (300% … 60%).
+# Offline solver is a no-op (T_off=0 assigns nothing); use bgap_milp for syntax only.
+for _cap_mu in [250, 375, 500, 625, 750, 875, 1000, 1250]:
+    _cap_base = {"problem": {"T_off": 0,
+                              "b_mean": float(_cap_mu),
+                              "b_std":  float(_cap_mu) * 0.05},
+                 "stoch":   {"T_onl": 100}}
+    add_scenario_with_feas_variants(
+        name=f"cap_mu{_cap_mu}_online_off0_on100",
+        overrides={
+            **_cap_base,
+            **volume_overrides(VOL_MID_VAR, DEFAULT_BOUNDS),
+            **base_cost_graph_overrides(),
+        },
+        description=(
+            f"Purely online capacity sweep: b_mean={_cap_mu}, b_std={_cap_mu * 0.05:.1f} "
+            f"(5% CV), T_off=0, T_onl=100. Same utilisation as cap_mu{_cap_mu * 2}_off60_on40."
+        ),
+    )
+
 
 def select_scenarios(names: Iterable[str] | None) -> List[ScenarioConfig]:
     if names is None:

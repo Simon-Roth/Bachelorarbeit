@@ -139,7 +139,9 @@ class PrimalDualPolicy(BaseOnlinePolicy):
         ).reshape(-1)
         T = max(1, len(instance.online_steps))
         self._effective_caps = caps_eff
-        self._cap_per_step = caps_eff / float(T)
+        offline_load = np.asarray(initial_state.load, dtype=float).reshape(-1)
+        residual_caps = np.maximum(0.0, caps_eff - offline_load)
+        self._cap_per_step = residual_caps / float(T)
         self._total_steps = T
         if self.cfg.primal_dual.normalize_costs:
             self._cost_scale = self._compute_cost_scale(instance, instance.n)

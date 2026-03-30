@@ -146,10 +146,10 @@ def compute_resource_prices(
 ) -> np.ndarray:
     """
     Compute dual prices via a sampled fractional LP.
-    - If sample_online_caps is True, online steps/feasibility are resampled using sample_seed.
-    - If cfg.costs.observe_future_online_costs is False, pricing uses sampled online costs.
-      If True, pricing uses realized online costs from the base instance.
-    - For num_samples >= 1, solve a single averaged LP with shared capacities.
+    - If sample_online_caps is True, online steps/feasibility are resampled using sample_seed
+    - If cfg.costs.observe_future_online_costs is False, pricing uses sampled online costs
+      If True, pricing uses realized online costs from the base instance
+    - For num_samples >= 1, solve a single averaged LP with shared capacities
     """
     sample_count = max(1, int(num_samples))
     observe_future_online_costs = bool(cfg.costs.observe_future_online_costs)

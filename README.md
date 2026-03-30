@@ -215,6 +215,20 @@ offline heuristics. The warm-start is optional and configured by
 ### `generic/offline/policies.py`
 Defines the interface for any offline heuristic (`solve(instance)`).
 
+### `generic/offline/utilization_priced.py`
+Generic volume-ordered heuristic with per-constraint congestion pricing (`UtilizationPricedDecreasing`).
+Items are sorted descending by worst-case normalised capacity footprint and assigned greedily.
+Each capacity constraint `j` maintains a utilisation-based dual variable `λ[j]`; the adjusted
+assignment cost for option `k` is:
+
+```
+adjusted_cost[k] = raw_cost[k] / avg_cost + dot(λ / eff_caps, cap_matrix[:, k])
+```
+
+This is the natural Lagrangian generalisation of the BGAP per-bin pricing to arbitrary
+`m × n` capacity matrices. Mathematically equivalent to the BGAP version on block-structured
+instances; extends directly to generic instances with heterogeneous constraints.
+
 ### `bgap/offline/policies/*`
 BGAP-specific offline heuristics used for warm-starts and baselines:
 

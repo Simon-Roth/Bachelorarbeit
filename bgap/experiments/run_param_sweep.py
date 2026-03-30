@@ -57,6 +57,14 @@ def parse_args() -> argparse.Namespace:
         help="Optional subset of pipeline names (defaults to all registered).",
     )
     parser.add_argument(
+        "--pipeline-suffix",
+        default="",
+        help=(
+            "Optional suffix appended to emitted pipeline names and eval filenames. "
+            "Useful for config-driven variants of an existing registered pipeline."
+        ),
+    )
+    parser.add_argument(
         "--seeds",
         nargs="*",
         type=int,
@@ -148,6 +156,7 @@ def main() -> None:
         for spec in pipeline_specs:
             offline_solver_cls = _import_symbol(spec.offline_solver)
             online_policy_cls = _import_symbol(spec.online_policy)
+            pipeline_name = f"{spec.name}{args.pipeline_suffix}"
 
             summary = run_eval(
                 scenario_cfg,
@@ -158,14 +167,14 @@ def main() -> None:
                 offline_solver_name=spec.offline_solver,
                 online_policy_name=spec.online_policy,
             )
-            summary["pipeline"] = spec.name
+            summary["pipeline"] = pipeline_name
             summary["scenario"] = scenario.name
             summary["scenario_description"] = scenario.description
             summary["problem"] = _scenario_problem_meta(scenario_cfg, args.T_onl)
 
-            output_path = scenario_dir / f"eval_{spec.name}_{timestamp}.json"
+            output_path = scenario_dir / f"eval_{pipeline_name}_{timestamp}.json"
             output_path.write_text(json.dumps(summary, indent=2))
-            print(f"Wrote {scenario.name}:{spec.name} -> {output_path}")
+            print(f"Wrote {scenario.name}:{pipeline_name} -> {output_path}")
 
 
 if __name__ == "__main__":
